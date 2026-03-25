@@ -2,10 +2,11 @@ name: Frontend Tests
 
 on:
   push:
+    branches: [main, dev, 'feature/**']
+    paths: ['frontend/**']
   pull_request:
-    branches:
-      - main
-      - dev
+    branches: [main, dev]
+    paths: ['frontend/**']
 
 jobs:
   test-frontend:
