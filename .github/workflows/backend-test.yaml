@@ -5,12 +5,14 @@ on:
     branches: [main, dev, 'feature/**']
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-tests.yml'
+      - '.github/workflows/backend-test.yaml'
   pull_request:
     branches: [main, dev]
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-tests.yml'
+      - '.github/workflows/backend-test.yaml'
+  
+  workflow_dispatch:
 
 jobs:
   test-backend:
