@@ -47,9 +47,8 @@ jobs:
       - name: Prepare standalone package
         run: |
           rm -rf deploy
-          mkdir -p deploy/.next
-          cp -r .next/standalone/* deploy/
-          cp -r .next/static deploy/.next/static
+          cp -r .next/standalone deploy
+          cp -r .next deploy/.next
           if [ -d public ]; then cp -r public deploy/public; fi
           if [ -f web.config ]; then cp web.config deploy/web.config; fi
 
