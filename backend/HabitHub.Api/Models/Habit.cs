@@ -5,8 +5,8 @@ namespace HabitHub.Api.Models;
 public class Habit
 {
     public Guid HabitId { get; set; }
-    public Guid? HabitTeamId { get; set; }
-    public HabitTeam? Team { get; set; }
+    public Guid HabitTeamId { get; set; }
+    public HabitTeam Team { get; set; } = null!;
 
     public Guid CreatorId { get; set; }
     public Member Creator { get; set; } = null!;
