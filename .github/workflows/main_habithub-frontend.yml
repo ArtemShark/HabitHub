@@ -75,11 +75,11 @@ jobs:
           du -sh deploy
 
       - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_772DB3CE2BDC4BC3AC3EF7AF4674C903 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_FD49AD5004584B9DA05A45479E70C13B }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C712C404E5BD4151A6168E62DF40601B }}
+          uses: azure/login@v2
+          with:
+            client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_772DB3CE2BDC4BC3AC3EF7AF4674C903 }}
+            tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_FD49AD5004584B9DA05A45479E70C13B }}
+            subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C712C404E5BD4151A6168E62DF40601B }}
 
       - name: Deploy to Azure
         uses: azure/webapps-deploy@v3
