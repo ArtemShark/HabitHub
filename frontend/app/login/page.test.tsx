@@ -133,7 +133,7 @@ describe("HabitHubLoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/login failed/i)).toBeInTheDocument();
+      expect(screen.getByText(/invalid email or password/i)).toBeInTheDocument();
     });
 
     expect(pushMock).not.toHaveBeenCalled();

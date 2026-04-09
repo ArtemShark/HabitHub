@@ -37,6 +37,8 @@ jobs:
 
       - name: Build Next.js app
         run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://habithub-backend-dndna4fxckd9epby.westeurope-01.azurewebsites.net
 
       - name: Verify standalone output
         run: |
@@ -48,9 +50,20 @@ jobs:
         run: |
           rm -rf deploy
           cp -r .next/standalone deploy
-          cp -r .next deploy/.next
+          mkdir -p deploy/.next
+          cp -r .next/static deploy/.next/static
+          cp -r .next/server deploy/.next/server
+          cp .next/BUILD_ID deploy/.next/BUILD_ID
           if [ -d public ]; then cp -r public deploy/public; fi
           if [ -f web.config ]; then cp web.config deploy/web.config; fi
+
+      - name: Verify deploy package
+        run: |
+          test -f deploy/server.js
+          test -f deploy/package.json
+          test -f deploy/.next/BUILD_ID
+          test -d deploy/.next/server
+          test -d deploy/.next/static
 
       - name: Patch package.json for Azure startup
         run: |
@@ -62,11 +75,11 @@ jobs:
           du -sh deploy
 
       - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_772DB3CE2BDC4BC3AC3EF7AF4674C903 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_FD49AD5004584B9DA05A45479E70C13B }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_72896B6DE12E40A38E4CAEAF8227FE01 }}
+          uses: azure/login@v2
+          with:
+            client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_772DB3CE2BDC4BC3AC3EF7AF4674C903 }}
+            tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_FD49AD5004584B9DA05A45479E70C13B }}
+            subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C712C404E5BD4151A6168E62DF40601B }}
 
       - name: Deploy to Azure
         uses: azure/webapps-deploy@v3

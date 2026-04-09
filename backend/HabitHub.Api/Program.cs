@@ -53,7 +53,8 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "http://localhost:3000"
+                "http://localhost:3000",
+                "https://habit-hub-swart.vercel.app"
             )
             .AllowAnyHeader()
             .AllowAnyMethod();
