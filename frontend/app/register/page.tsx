@@ -3,183 +3,372 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+import { motion, type Variants } from "framer-motion";
+import {
+  User,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  UserPlus,
+  Sparkles,
+  CheckCircle2,
+} from "lucide-react";
+
+const formVariants: Variants = {
+  hidden: { opacity: 0, y: 24 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: [0.25, 0.1, 0.25, 1],
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.45,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+};
 
 export default function RegisterPage() {
-    const router = useRouter();
+  const router = useRouter();
 
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [Username, setUserName] = useState('');
+  const [email, setEmail] = useState("");
+  const [username, setUserName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-    async function handleRegister(e: React.FormEvent<HTMLFormElement>) {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
+  async function handleRegister(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
-        if (password !== confirmPassword) {
-            setError('Passwords do not match');
-            setLoading(false);
-            return;
-        }
-
-        try{
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/register`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email, password, Username })
-                }
-            );
-            if (!response.ok){
-                const message = await response.text();
-                throw new Error(message || 'Registration failed');
-            }
-            const data = await response.json();
-
-            localStorage.setItem("token", data.token);
-            localStorage.setItem("user", JSON.stringify(data));
-
-            router.push("/dashboard");
-        }
-        catch(err){
-            setError(err instanceof Error ? err.message : 'Something went wrong');
-        }
-        finally{
-            setLoading(false);
-        }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      setLoading(false);
+      return;
     }
-    return (
-    <div className="h-screen bg-slate-100 flex items-center justify-center p-4 lg:p-6">
-      <div className="h-[90vh] w-full max-w-6xl overflow-hidden rounded-[28px] bg-white shadow-2xl grid lg:grid-cols-2">
-        <div className="relative hidden lg:flex flex-col overflow-y-auto bg-[radial-gradient(circle_at_top_left,_#667eea_0%,_#4c5fd7_40%,_#2f3f9e_100%)] p-8">
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -left-16 top-12 h-64 w-[120%] rounded-[50%] border-[18px] border-white/70 opacity-90" />
-            <div className="absolute -left-8 top-32 h-72 w-[120%] rounded-[50%] border-[10px] border-indigo-200/70 opacity-80" />
-            <div className="absolute -left-20 bottom-8 h-80 w-[125%] rounded-[50%] border-[22px] border-indigo-900/45 opacity-80" />
-            <div className="absolute left-12 bottom-20 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-          </div>
 
-          <div className="relative z-10 max-w-md text-white">
-            <div className="mb-6 inline-flex items-center gap-3 rounded-full bg-white/15 px-4 py-2 backdrop-blur-sm">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-400 text-lg">
-                ✓
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/register`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            password,
+            Username: username,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Registration failed");
+      }
+
+      const data = await response.json();
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data));
+
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#07090F] px-4 py-6 text-white sm:px-6 md:px-8 md:py-10">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.18),transparent_28%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(244,63,94,0.10),transparent_22%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:32px_32px]" />
+
+      <div className="relative mx-auto grid min-h-[calc(100vh-3rem)] max-w-7xl overflow-hidden rounded-[36px] border border-white/10 bg-black/35 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:grid-cols-2">
+        <section className="relative hidden overflow-hidden lg:flex">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.45),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.18),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))]" />
+
+          <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
+          <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="absolute left-1/2 top-1/3 h-56 w-56 -translate-x-1/2 rounded-full bg-fuchsia-500/10 blur-3xl" />
+
+          <div className="relative z-10 flex h-full w-full flex-col justify-between p-10 xl:p-14">
+            <div>
+              <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-black shadow-lg">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <span className="text-sm font-medium uppercase tracking-[0.18em] text-white/85">
+                  HabitHub
+                </span>
               </div>
-              <span className="text-sm font-medium tracking-wide">HabitHub</span>
             </div>
 
-            <img
-              src="/login.png"
-              alt="Habit illustration"
-              className="mb-6 w-full max-w-[420px] rounded-lg object-contain"
-            />
-
-            <h1 className="mt-6 text-4xl font-bold leading-tight">
-              Start strong.
-              <br />
-              Stay consistent.
-            </h1>
-            <p className="mt-4 max-w-sm text-sm text-indigo-100">
-              Create your HabitHub account and begin building routines that last.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-center bg-slate-100 p-6 sm:p-8 lg:p-12 overflow-y-auto">
-          <div className="w-full max-w-md rounded-[28px] bg-amber-400 px-8 py-10 shadow-xl sm:px-10">
-            <div className="mb-8">
-              <h2 className="text-3xl font-bold text-slate-900">Create Account</h2>
-              <p className="mt-2 text-sm text-slate-800/80">
-                Join HabitHub and start tracking your goals today.
-              </p>
-            </div>
-
-            <form className="space-y-5" onSubmit={handleRegister}>
-              <div>
-                <label htmlFor="userName" className="mb-2 block text-sm font-medium text-slate-900">
-                  Username
-                </label>
-                <input
-                  id="userName"
-                  type="text"
-                  placeholder="Enter your username"
-                  value={Username}
-                  onChange={(e) => setUserName(e.target.value)}
-                  className="w-full rounded-full border border-white/70 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 text-slate-900"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-900">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-full border border-white/70 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 text-slate-900"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-900">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="Create a password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-full border border-white/70 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 text-slate-900"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-slate-900">
-                  Confirm Password
-                </label>
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder="Repeat your password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full rounded-full border border-white/70 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 text-slate-900"
-                  required
-                />
-              </div>
-
-              {error && <p className="text-sm font-medium text-red-700">{error}</p>}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-full bg-indigo-900 px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.01] hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-70"
+            <div className="max-w-xl">
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, ease: [0.25, 0.1, 0.25, 1] }}
               >
-                {loading ? "Creating account..." : "Create account"}
-              </button>
-            </form>
+                <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-300">
+                  <Sparkles className="h-4 w-4" />
+                  Start your journey
+                </div>
 
-            <p className="mt-6 text-center text-sm text-slate-900/80">
-              Already have an account?{" "}
-              <Link href="/login" className="font-semibold text-slate-950 hover:underline">
-                Log in
-              </Link>
-            </p>
+                <h1 className="text-4xl font-semibold leading-tight text-white xl:text-5xl">
+                  Start strong.
+                  <br />
+                  Stay consistent.
+                </h1>
+
+                <p className="mt-5 max-w-md text-base leading-7 text-white/65">
+                  Create your HabitHub account and begin building routines that last
+                  with structure, motivation, and team support.
+                </p>
+
+                <div className="mt-8 grid max-w-lg grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/45">
+                      Shared accountability
+                    </p>
+                    <p className="mt-2 text-sm text-white/80">
+                      Join teams, track habits, and stay motivated together.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/45">
+                      Focused progress
+                    </p>
+                    <p className="mt-2 text-sm text-white/80">
+                      Build long-term consistency through goals, reminders, and streaks.
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+
+            <div className="text-sm text-white/35">
+              HabitHub — collaborative habit tracking
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section className="flex items-center justify-center p-5 sm:p-8 lg:p-10 xl:p-14">
+          <motion.div
+            variants={formVariants}
+            initial="hidden"
+            animate="show"
+            className="w-full max-w-md"
+          >
+            <motion.div variants={itemVariants} className="mb-6 lg:hidden">
+              <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-black shadow-lg">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <span className="text-sm font-medium uppercase tracking-[0.18em] text-white/85">
+                  HabitHub
+                </span>
+              </div>
+            </motion.div>
+
+            <motion.div
+              variants={itemVariants}
+              className="rounded-[30px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-8"
+            >
+              <div className="mb-8">
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/70">
+                  Create account
+                </p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                  Join HabitHub
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-white/55">
+                  Start tracking your goals, habits, and team progress in one place.
+                </p>
+              </div>
+
+              <form onSubmit={handleRegister} className="space-y-5">
+                <motion.div variants={itemVariants}>
+                  <label
+                    htmlFor="username"
+                    className="mb-2 block text-sm font-medium text-white/70"
+                  >
+                    Username
+                  </label>
+
+                  <div className="group flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 transition focus-within:border-emerald-400/40">
+                    <User className="h-5 w-5 text-white/35" />
+                    <input
+                      id="username"
+                      type="text"
+                      placeholder="Enter your username"
+                      value={username}
+                      onChange={(e) => setUserName(e.target.value)}
+                      required
+                      className="w-full bg-transparent px-3 py-3.5 text-sm text-white outline-none placeholder:text-white/30"
+                    />
+                  </div>
+                </motion.div>
+
+                <motion.div variants={itemVariants}>
+                  <label
+                    htmlFor="email"
+                    className="mb-2 block text-sm font-medium text-white/70"
+                  >
+                    Email
+                  </label>
+
+                  <div className="group flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 transition focus-within:border-emerald-400/40">
+                    <Mail className="h-5 w-5 text-white/35" />
+                    <input
+                      id="email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className="w-full bg-transparent px-3 py-3.5 text-sm text-white outline-none placeholder:text-white/30"
+                    />
+                  </div>
+                </motion.div>
+
+                <motion.div variants={itemVariants}>
+                  <label
+                    htmlFor="password"
+                    className="mb-2 block text-sm font-medium text-white/70"
+                  >
+                    Password
+                  </label>
+
+                  <div className="group flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 transition focus-within:border-emerald-400/40">
+                    <Lock className="h-5 w-5 text-white/35" />
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Create a password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="w-full bg-transparent px-3 py-3.5 text-sm text-white outline-none placeholder:text-white/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="text-white/45 transition hover:text-white/80"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+
+                <motion.div variants={itemVariants}>
+                  <label
+                    htmlFor="confirmPassword"
+                    className="mb-2 block text-sm font-medium text-white/70"
+                  >
+                    Confirm Password
+                  </label>
+
+                  <div className="group flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 transition focus-within:border-emerald-400/40">
+                    <Lock className="h-5 w-5 text-white/35" />
+                    <input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Repeat your password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      className="w-full bg-transparent px-3 py-3.5 text-sm text-white outline-none placeholder:text-white/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowConfirmPassword((prev) => !prev)
+                      }
+                      className="text-white/45 transition hover:text-white/80"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+
+                <AnimateError error={error} />
+
+                <motion.div variants={itemVariants}>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-3.5 text-sm font-semibold text-black transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    {loading ? "Creating account..." : "Create account"}
+                  </button>
+                </motion.div>
+              </form>
+
+              <motion.p
+                variants={itemVariants}
+                className="mt-6 text-center text-sm text-white/60"
+              >
+                Already have an account?{" "}
+                <Link
+                  href="/login"
+                  className="font-semibold text-white transition hover:text-emerald-300"
+                >
+                  Log in
+                </Link>
+              </motion.p>
+            </motion.div>
+          </motion.div>
+        </section>
       </div>
-    </div>
+    </main>
+  );
+}
+
+function AnimateError({ error }: { error: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{
+        opacity: error ? 1 : 0,
+        height: error ? "auto" : 0,
+      }}
+      transition={{ duration: 0.25 }}
+      className="overflow-hidden"
+    >
+      {error && (
+        <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-300">
+          {error}
+        </div>
+      )}
+    </motion.div>
   );
 }
