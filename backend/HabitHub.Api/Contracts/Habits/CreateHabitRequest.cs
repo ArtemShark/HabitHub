@@ -8,10 +8,15 @@ public class CreateHabitRequest
 {
     [Required]
     public string Name { get; set; } = null!;
+
     [Required]
     public string Goal { get; set; } = null!;
+
     [Required]
     public HabitType HabitType { get; set; }
+
     public string? Unit { get; set; }
+
+    [Required]
     public DateTime ExpiryDate { get; set; }
 }

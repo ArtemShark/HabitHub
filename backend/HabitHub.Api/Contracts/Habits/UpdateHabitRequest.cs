@@ -6,13 +6,9 @@ namespace HabitHub.Api.Contracts.Habits;
 
 public class UpdateHabitRequest
 {
-    [Required]
-    public string Name { get; set; } = null!;
-    [Required]
-    public string Goal { get; set; } = null!;
-    [Required]
-    public HabitType HabitType { get; set; }
-    public HabitState HabitState { get; set; }
+    public string? Name { get; set; }
+    public string? Goal { get; set; }
+    public HabitType? HabitType { get; set; }
     public string? Unit { get; set; }
-    public DateTime ExpiryDate { get; set; }
+    public DateTime? ExpiryDate { get; set; }
 }
