@@ -170,18 +170,20 @@ public class HabitsController : ControllerBase
 
         var habits = await _context.Habits
             .Where(h => h.Team.Memberships.Any(m => m.MemberId == memberId))
-            .Select(h => new HabitResponse(
-                HabitId: h.HabitId,
-                HabitTeamId: h.HabitTeamId,
-                CreatorId: h.CreatorId,
-                Name: h.Name,
-                Goal: h.Goal,
-                HabitState: h.HabitState,
-                ExpiryDate: h.ExpiryDate,
-                HabitType: h.HabitType,
-                Unit: h.Unit
-            ))
+            .Select(h => new HabitResponse
+            {
+                HabitId = h.HabitId,
+                HabitTeamId = h.HabitTeamId,
+                CreatorId = h.CreatorId,
+                Name = h.Name,
+                Goal = h.Goal,
+                HabitState = h.HabitState,
+                ExpiryDate = h.ExpiryDate,
+                HabitType = h.HabitType,
+                Unit = h.Unit
+            })
             .ToListAsync();
+
         return Ok(habits);
     }
 
