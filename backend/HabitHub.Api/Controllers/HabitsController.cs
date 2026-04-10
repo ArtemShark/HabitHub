@@ -158,6 +158,33 @@ public class HabitsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet]
+    public async Task<ActionResult<List<HabitResponse>>> GetHabitsForMember([FromQuery] Guid memberId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (userId.Value != memberId)
+            return Forbid();
+
+        var habits = await _context.Habits
+            .Where(h => h.Team.Memberships.Any(m => m.MemberId == memberId))
+            .Select(h => new HabitResponse(
+                HabitId: h.HabitId,
+                HabitTeamId: h.HabitTeamId,
+                CreatorId: h.CreatorId,
+                Name: h.Name,
+                Goal: h.Goal,
+                HabitState: h.HabitState,
+                ExpiryDate: h.ExpiryDate,
+                HabitType: h.HabitType,
+                Unit: h.Unit
+            ))
+            .ToListAsync();
+        return Ok(habits);
+    }
+
     private Guid? GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
