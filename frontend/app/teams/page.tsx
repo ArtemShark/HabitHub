@@ -16,7 +16,15 @@ import {
   LogOut,
   Trash2,
   UserMinus,
+  Target,
 } from "lucide-react";
+import {
+  Habit,
+  HabitResponseDto,
+  UpdateHabitRequestDto,
+  HabitType,
+} from "../dto/Habit";
+import { mapHabit } from "../auxiliary/mapHabit";
 
 type TeamMember = {
   memberId?: string;
@@ -167,6 +175,14 @@ async function fetchTeam(teamId: string): Promise<TeamResponse> {
   return apiFetch<TeamResponse>(`/api/teams/${teamId}`, { method: "GET" });
 }
 
+async function fetchTeamHabits(teamId: string): Promise<Habit[]> {
+  const dtos = await apiFetch<HabitResponseDto[]>(`/api/teams/${teamId}/habits`, {
+    method: "GET",
+  });
+
+  return dtos.map(mapHabit);
+}
+
 async function createTeam(name: string): Promise<TeamResponse> {
   return apiFetch<TeamResponse>("/api/teams", {
     method: "POST",
@@ -206,6 +222,32 @@ async function deleteTeam(teamId: string): Promise<void> {
   await apiFetch<void>(`/api/teams/${teamId}`, {
     method: "DELETE",
   });
+}
+
+async function createHabit(
+  teamId: string,
+  payload: {
+    name: string;
+    goal: string;
+    habitType: number;
+    expiryDate: string;
+    unit?: string | null;
+  }
+): Promise<Habit> {
+  const dto = await apiFetch<HabitResponseDto>(`/api/teams/${teamId}/habits`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return mapHabit(dto);
+}
+
+async function updateHabit(habitId: string, payload: UpdateHabitRequestDto): Promise<Habit> {
+  const dto = await apiFetch<HabitResponseDto>(`/api/habits/${habitId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return mapHabit(dto);
 }
 
 function NavButton({
@@ -325,15 +367,25 @@ export default function TeamsPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<TeamResponse | null>(null);
 
+  const [teamHabits, setTeamHabits] = useState<Habit[]>([]);
+  const [loadingHabits, setLoadingHabits] = useState(false);
+
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [loadingSelectedTeam, setLoadingSelectedTeam] = useState(false);
 
   const [createName, setCreateName] = useState("");
   const [joinCode, setJoinCode] = useState("");
 
+  const [habitName, setHabitName] = useState("");
+  const [habitType, setHabitType] = useState<HabitType>("binary");
+  const [habitGoal, setHabitGoal] = useState("");
+  const [habitUnit, setHabitUnit] = useState("");
+  const [habitEndDate, setHabitEndDate] = useState("");
+
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [joiningTeam, setJoiningTeam] = useState(false);
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const [creatingHabit, setCreatingHabit] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [kickingId, setKickingId] = useState<string | null>(null);
@@ -394,6 +446,20 @@ export default function TeamsPage() {
     }
   }
 
+  async function loadTeamHabits(teamId: string) {
+    setLoadingHabits(true);
+
+    try {
+      const habits = await fetchTeamHabits(teamId);
+      setTeamHabits(habits);
+    } catch (err) {
+      setTeamHabits([]);
+      setError(err instanceof Error ? err.message : "Failed to load team habits.");
+    } finally {
+      setLoadingHabits(false);
+    }
+  }
+
   useEffect(() => {
     void loadTeams();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -402,10 +468,12 @@ export default function TeamsPage() {
   useEffect(() => {
     if (!selectedTeamId) {
       setSelectedTeam(null);
+      setTeamHabits([]);
       return;
     }
 
     void loadSelectedTeam(selectedTeamId);
+    void loadTeamHabits(selectedTeamId);
   }, [selectedTeamId]);
 
   async function handleCreateTeam() {
@@ -467,6 +535,53 @@ export default function TeamsPage() {
     }
   }
 
+  async function handleCreateHabit() {
+    if (!selectedTeam) return;
+
+    if (!habitName.trim()) {
+        setError("Habit name is required.");
+        return;
+    }
+
+    if (!habitGoal.trim()) {
+        setError("Goal is required.");
+        return;
+    }
+
+    if (!habitEndDate) {
+        setError("End date is required.");
+        return;
+    }
+
+    setCreatingHabit(true);
+    setError(null);
+
+    try {
+        const payload = {
+        name: habitName.trim(),
+        goal: habitGoal.trim(), // must be string
+        habitType: habitType === "binary" ? 0 : 1,
+        expiryDate: new Date(habitEndDate).toISOString(), // required
+        unit: habitUnit.trim() || null,
+        };
+
+        await createHabit(selectedTeam.habitTeamId, payload);
+
+        setHabitName("");
+        setHabitType("binary");
+        setHabitGoal("");
+        setHabitUnit("");
+        setHabitEndDate("");
+
+        await loadTeamHabits(selectedTeam.habitTeamId);
+        flashSuccess("Habit created successfully.");
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to create habit.");
+    } finally {
+        setCreatingHabit(false);
+    }
+    }
+
   async function handleCopyCode() {
     if (!inviteResult?.code) return;
 
@@ -527,6 +642,7 @@ export default function TeamsPage() {
       setTeams(updated);
       setSelectedTeam(updated[0] ?? null);
       setSelectedTeamId(updated[0]?.habitTeamId ?? null);
+      setTeamHabits([]);
 
       flashSuccess("Team deleted.");
     } catch (err) {
@@ -557,7 +673,7 @@ export default function TeamsPage() {
                 Teams
               </h1>
               <p className="mt-2 text-sm text-white/50">
-                Create teams, invite members, and manage collaboration in one place.
+                Create teams, invite members, manage collaboration, and add team habits.
               </p>
             </div>
 
@@ -707,7 +823,7 @@ export default function TeamsPage() {
               <SectionTitle
                 icon={<Users className="h-5 w-5" />}
                 title="Team Management"
-                subtitle="Browse your teams, inspect members, and manage access"
+                subtitle="Browse your teams, inspect members, manage access, and create habits"
               />
 
               <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -794,7 +910,7 @@ export default function TeamsPage() {
                           <div>
                             <h3 className="text-lg font-semibold text-white">{selectedTeam.name}</h3>
                             <p className="mt-1 text-sm text-white/50">
-                              Manage members and team access.
+                              Manage members, access, and team habits.
                             </p>
                           </div>
 
@@ -803,6 +919,180 @@ export default function TeamsPage() {
                               <Crown className="h-3.5 w-3.5" />
                               You are the creator
                             </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div>
+                            <h3 className="text-base font-semibold text-white">Team Habits</h3>
+                            <p className="mt-1 text-sm text-white/50">
+                              Create and review habits shared inside this team.
+                            </p>
+                          </div>
+
+                          <span className="rounded-full px-3 py-1 text-xs font-medium text-white/70 ring-1 ring-white/10">
+                            {teamHabits.length}
+                          </span>
+                        </div>
+
+                        <div className="mb-5 grid gap-4 md:grid-cols-2">
+                          <div className="md:col-span-2">
+                            <label className="mb-2 block text-sm text-white/65">
+                              Habit Name
+                            </label>
+                            <input
+                              type="text"
+                              value={habitName}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setHabitName(e.target.value)
+                              }
+                              placeholder="e.g. Read 10 pages"
+                              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-sm text-white/65">
+                              Habit Type
+                            </label>
+                            <select
+                              value={habitType}
+                              onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                                setHabitType(e.target.value as HabitType)
+                              }
+                              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
+                            >
+                              <option value="binary" className="bg-[#0b1220]">
+                                Binary
+                              </option>
+                              <option value="value" className="bg-[#0b1220]">
+                                Value
+                              </option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-sm text-white/65">
+                              Goal
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={habitGoal}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setHabitGoal(e.target.value)
+                              }
+                              placeholder="e.g. 10"
+                              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-sm text-white/65">
+                              Unit
+                            </label>
+                            <input
+                              type="text"
+                              value={habitUnit}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setHabitUnit(e.target.value)
+                              }
+                              placeholder="e.g. pages, km"
+                              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-sm text-white/65">
+                              End Date
+                            </label>
+                            <input
+                              type="date"
+                              value={habitEndDate}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setHabitEndDate(e.target.value)
+                              }
+                              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
+                            />
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <button
+                              onClick={() => void handleCreateHabit()}
+                              disabled={creatingHabit}
+                              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-black transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Plus className="h-4 w-4" />
+                              {creatingHabit ? "Creating..." : "Create Habit for Team"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          {loadingHabits ? (
+                            <div className="rounded-[24px] border border-dashed border-white/12 bg-white/[0.03] px-6 py-8 text-center">
+                              <p className="text-sm text-white/50">Loading habits...</p>
+                            </div>
+                          ) : teamHabits.length > 0 ? (
+                            <AnimatePresence mode="popLayout">
+                              {teamHabits.map((habit) => (
+                                <motion.div
+                                  key={habit.id}
+                                  layout
+                                  initial={{ opacity: 0, y: 16 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -12 }}
+                                  whileHover={{ y: -2 }}
+                                  className="rounded-[24px] border border-white/10 bg-white/5 p-5"
+                                >
+                                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <h4 className="text-base font-semibold text-white">
+                                          {habit.name}
+                                        </h4>
+
+                                        <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-medium text-cyan-300 ring-1 ring-cyan-400/20">
+                                          {habit.type}
+                                        </span>
+
+                                        <span className="rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 ring-1 ring-white/10">
+                                          {habit.status}
+                                        </span>
+                                      </div>
+
+                                      <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/55">
+                                        {habit.goal !== undefined && (
+                                          <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">
+                                            Goal: {habit.goal}
+                                            {habit.unit ? ` ${habit.unit}` : ""}
+                                          </span>
+                                        )}
+
+                                        {habit.endDate && (
+                                          <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">
+                                            Ends: {new Date(habit.endDate).toLocaleDateString()}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5 text-white/70">
+                                      <Target className="h-5 w-5" />
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              ))}
+                            </AnimatePresence>
+                          ) : (
+                            <div className="rounded-[24px] border border-dashed border-white/12 bg-white/[0.03] px-6 py-8 text-center">
+                              <p className="text-sm text-white/50">
+                                No habits created for this team yet.
+                              </p>
+                            </div>
                           )}
                         </div>
                       </div>

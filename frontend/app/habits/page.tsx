@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import Link from "next/link";
 import {
   Bell,
   Clock3,
   Settings,
-  Plus,
   Pencil,
   Archive,
   Trash2,
@@ -18,79 +17,10 @@ import {
   X,
   ListTodo,
 } from "lucide-react";
+import { Habit, HabitFormData, HabitResponseDto, UpdateHabitRequestDto, HabitStatus, HabitType } from "../dto/Habit";
+import { mapHabit } from "../auxiliary/mapHabit";
 
-type HabitStatus = "active" | "archived";
-type HabitType = "binary" | "value";
-
-type Habit = {
-  id: number;
-  name: string;
-  description: string;
-  type: HabitType;
-  goal?: number;
-  unit?: string;
-  endDate?: string;
-  status: HabitStatus;
-  streak: number;
-  progress: number;
-};
-
-type HabitFormData = {
-  name: string;
-  description: string;
-  type: HabitType;
-  goal: string;
-  unit: string;
-  endDate: string;
-};
-
-const initialHabits: Habit[] = [
-  {
-    id: 1,
-    name: "Drink Water",
-    description: "Stay hydrated throughout the day",
-    type: "value",
-    goal: 2,
-    unit: "liters",
-    endDate: "2026-04-30",
-    status: "active",
-    streak: 6,
-    progress: 78,
-  },
-  {
-    id: 2,
-    name: "Read",
-    description: "Read at least 20 pages",
-    type: "value",
-    goal: 20,
-    unit: "pages",
-    endDate: "2026-05-10",
-    status: "active",
-    streak: 12,
-    progress: 64,
-  },
-  {
-    id: 3,
-    name: "Morning Stretching",
-    description: "Quick flexibility routine",
-    type: "binary",
-    status: "active",
-    streak: 9,
-    progress: 88,
-  },
-  {
-    id: 4,
-    name: "10k Steps",
-    description: "Daily movement goal",
-    type: "value",
-    goal: 10000,
-    unit: "steps",
-    endDate: "2026-03-28",
-    status: "archived",
-    streak: 21,
-    progress: 100,
-  },
-];
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -112,6 +42,119 @@ const itemVariants: Variants = {
     },
   },
 };
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token") || sessionStorage.getItem("token");
+}
+
+function parseJwt(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function getCurrentUserId(): string | null {
+  const token = getToken();
+  if (!token) return null;
+
+  const payload = parseJwt(token);
+  if (!payload) return null;
+
+  const keys = [
+    "nameid",
+    "sub",
+    "userId",
+    "userid",
+    "id",
+    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+  ];
+
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const token = getToken();
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let message = `API request failed with status ${response.status}`;
+
+    if (response.status === 401) {
+      message = "Unauthorized. Please log in again.";
+    }
+
+    try {
+      const errorData = await response.json();
+      message = errorData?.message || errorData?.title || message;
+    } catch {
+      try {
+        const text = await response.text();
+        if (text) message = text;
+      } catch {}
+    }
+
+    throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
+  const dtos = await apiFetch<HabitResponseDto[]>(`/api/habits?memberId=${memberId}`, {
+    method: "GET",
+  });
+  return dtos.map(mapHabit);
+}
+
+async function updateHabit(habitId: string, payload: UpdateHabitRequestDto): Promise<Habit> {
+  const dto = await apiFetch<HabitResponseDto>(`/api/habits/${habitId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return mapHabit(dto);
+}
+
+async function archiveHabit(habitId: string): Promise<Habit> {
+  const dto = await apiFetch<HabitResponseDto>(`/api/habits/${habitId}/archive`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return mapHabit(dto);
+}
+
+async function deleteHabit(habitId: string): Promise<void> {
+  await apiFetch<void>(`/api/habits/${habitId}`, {
+    method: "DELETE",
+  });
+}
 
 function NavButton({
   href,
@@ -205,25 +248,6 @@ function SectionTitle({
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
-  return (
-    <div className="mt-3">
-      <div className="mb-2 flex items-center justify-between text-xs text-white/50">
-        <span>Progress</span>
-        <span>{value}%</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-white/8">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${value}%` }}
-          transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
-          className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-500"
-        />
-      </div>
-    </div>
-  );
-}
-
 function StatPill({
   icon,
   label,
@@ -246,23 +270,25 @@ function StatPill({
 
 function HabitFormModal({
   open,
-  mode,
   initialData,
   onClose,
   onSubmit,
 }: {
   open: boolean;
-  mode: "add" | "edit";
   initialData: HabitFormData;
   onClose: () => void;
   onSubmit: (data: HabitFormData) => void;
 }) {
   const [form, setForm] = useState<HabitFormData>(initialData);
 
+  React.useEffect(() => {
+    setForm(initialData);
+  }, [initialData]);
+
   const isValueType = form.type === "value";
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -276,7 +302,6 @@ function HabitFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(form);
-    setForm(initialData);
   };
 
   return (
@@ -301,11 +326,9 @@ function HabitFormModal({
             <div className="rounded-[30px] border border-white/10 bg-[#0B1018]/95 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
               <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-semibold text-white">
-                    {mode === "add" ? "Add New Habit" : "Edit Habit"}
-                  </h3>
+                  <h3 className="text-2xl font-semibold text-white">Edit Habit</h3>
                   <p className="mt-1 text-sm text-white/50">
-                    Configure the habit details below.
+                    Update the habit details below.
                   </p>
                 </div>
 
@@ -326,19 +349,6 @@ function HabitFormModal({
                       value={form.name}
                       onChange={handleChange}
                       required
-                      placeholder="e.g. Drink Water"
-                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="mb-2 block text-sm text-white/65">Description</label>
-                    <textarea
-                      name="description"
-                      value={form.description}
-                      onChange={handleChange}
-                      rows={3}
-                      placeholder="Short habit description"
                       className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
                     />
                   </div>
@@ -351,12 +361,8 @@ function HabitFormModal({
                       onChange={handleChange}
                       className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
                     >
-                      <option value="binary" className="bg-[#0B1018]">
-                        Binary
-                      </option>
-                      <option value="value" className="bg-[#0B1018]">
-                        Value
-                      </option>
+                      <option value="binary" className="bg-[#0B1018]">Binary</option>
+                      <option value="value" className="bg-[#0B1018]">Value</option>
                     </select>
                   </div>
 
@@ -380,8 +386,7 @@ function HabitFormModal({
                           name="goal"
                           value={form.goal}
                           onChange={handleChange}
-                          placeholder="e.g. 2"
-                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
+                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
                         />
                       </div>
 
@@ -391,8 +396,7 @@ function HabitFormModal({
                           name="unit"
                           value={form.unit}
                           onChange={handleChange}
-                          placeholder="e.g. liters, pages, km"
-                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
+                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
                         />
                       </div>
                     </>
@@ -412,7 +416,7 @@ function HabitFormModal({
                     type="submit"
                     className="rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-black transition hover:scale-[1.01]"
                   >
-                    {mode === "add" ? "Create Habit" : "Save Changes"}
+                    Save Changes
                   </button>
                 </div>
               </form>
@@ -425,34 +429,58 @@ function HabitFormModal({
 }
 
 export default function HabitsPage() {
-  const [habits, setHabits] = useState<Habit[]>(initialHabits);
+  const [habits, setHabits] = useState<Habit[]>([]);
   const [activeTab, setActiveTab] = useState<HabitStatus>("active");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"add" | "edit">("add");
-  const [editingHabitId, setEditingHabitId] = useState<number | null>(null);
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const emptyForm: HabitFormData = {
-    name: "",
-    description: "",
-    type: "binary",
-    goal: "",
-    unit: "",
-    endDate: "",
-  };
+  const currentUserId = useMemo(() => getCurrentUserId(), []);
+
+  useEffect(() => {
+    async function load() {
+      if (!currentUserId) {
+        setError("Could not determine current user.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const data = await fetchHabitsForMember(currentUserId);
+        setHabits(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load habits.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void load();
+  }, [currentUserId]);
 
   const editingHabit = habits.find((habit) => habit.id === editingHabitId);
 
-  const modalInitialData: HabitFormData =
-    modalMode === "edit" && editingHabit
-      ? {
-          name: editingHabit.name,
-          description: editingHabit.description,
-          type: editingHabit.type,
-          goal: editingHabit.goal?.toString() ?? "",
-          unit: editingHabit.unit ?? "",
-          endDate: editingHabit.endDate ?? "",
-        }
-      : emptyForm;
+  const modalInitialData: HabitFormData = editingHabit
+    ? {
+        name: editingHabit.name,
+        type: editingHabit.type,
+        goal: editingHabit.goal?.toString() ?? "",
+        unit: editingHabit.unit ?? "",
+        endDate: editingHabit.endDate
+          ? new Date(editingHabit.endDate).toISOString().slice(0, 10)
+          : "",
+      }
+    : {
+        name: "",
+        type: "binary",
+        goal: "",
+        unit: "",
+        endDate: "",
+      };
 
   const visibleHabits = useMemo(
     () => habits.filter((habit) => habit.status === activeTab),
@@ -462,14 +490,7 @@ export default function HabitsPage() {
   const activeCount = habits.filter((h) => h.status === "active").length;
   const archivedCount = habits.filter((h) => h.status === "archived").length;
 
-  const openAddModal = () => {
-    setModalMode("add");
-    setEditingHabitId(null);
-    setIsModalOpen(true);
-  };
-
-  const openEditModal = (habitId: number) => {
-    setModalMode("edit");
+  const openEditModal = (habitId: string) => {
     setEditingHabitId(habitId);
     setIsModalOpen(true);
   };
@@ -479,60 +500,56 @@ export default function HabitsPage() {
     setEditingHabitId(null);
   };
 
-  const handleSubmitHabit = (data: HabitFormData) => {
-    const mappedHabit: Omit<Habit, "id" | "status" | "streak" | "progress"> = {
-      name: data.name.trim(),
-      description: data.description.trim(),
-      type: data.type,
-      goal: data.type === "value" && data.goal ? Number(data.goal) : undefined,
-      unit: data.type === "value" ? data.unit.trim() : undefined,
-      endDate: data.endDate || undefined,
-    };
+  const handleSubmitHabit = async (data: HabitFormData) => {
+    if (!editingHabitId) return;
 
-    if (modalMode === "add") {
-      const newHabit: Habit = {
-        id: Date.now(),
-        ...mappedHabit,
-        status: "active",
-        streak: 0,
-        progress: 0,
+    try {
+      setError("");
+      setSuccess("");
+
+      const payload: UpdateHabitRequestDto = {
+        name: data.name.trim(),
+        habitType: data.type === "value" ? 1 : 0,
+        goal: data.type === "value" && data.goal ? Number(data.goal) : null,
+        unit: data.type === "value" ? data.unit.trim() || null : null,
+        expiryDate: data.endDate ? new Date(data.endDate).toISOString() : null,
       };
 
-      setHabits((prev) => [newHabit, ...prev]);
-    } else if (modalMode === "edit" && editingHabitId !== null) {
+      const updated = await updateHabit(editingHabitId, payload);
+
       setHabits((prev) =>
-        prev.map((habit) =>
-          habit.id === editingHabitId
-            ? {
-                ...habit,
-                ...mappedHabit,
-              }
-            : habit
-        )
+        prev.map((habit) => (habit.id === editingHabitId ? updated : habit))
       );
+
+      setSuccess("Habit updated successfully.");
+      closeModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update habit.");
     }
-
-    closeModal();
   };
 
-  const handleArchiveHabit = (habitId: number) => {
-    setHabits((prev) =>
-      prev.map((habit) =>
-        habit.id === habitId ? { ...habit, status: "archived" } : habit
-      )
-    );
+  const handleArchiveHabit = async (habitId: string) => {
+    try {
+      setError("");
+      setSuccess("");
+      const updated = await archiveHabit(habitId);
+      setHabits((prev) => prev.map((habit) => (habit.id === habitId ? updated : habit)));
+      setSuccess("Habit archived successfully.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive habit.");
+    }
   };
 
-  const handleDeleteHabit = (habitId: number) => {
-    setHabits((prev) => prev.filter((habit) => habit.id !== habitId));
-  };
-
-  const handleUnarchiveHabit = (habitId: number) => {
-    setHabits((prev) =>
-      prev.map((habit) =>
-        habit.id === habitId ? { ...habit, status: "active" } : habit
-      )
-    );
+  const handleDeleteHabit = async (habitId: string) => {
+    try {
+      setError("");
+      setSuccess("");
+      await deleteHabit(habitId);
+      setHabits((prev) => prev.filter((habit) => habit.id !== habitId));
+      setSuccess("Habit deleted successfully.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete habit.");
+    }
   };
 
   return (
@@ -581,6 +598,21 @@ export default function HabitsPage() {
           </div>
         </header>
 
+        {(error || success) && (
+          <div className="mt-6 space-y-3">
+            {error && (
+              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                {error}
+              </div>
+            )}
+            {success && (
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+                {success}
+              </div>
+            )}
+          </div>
+        )}
+
         <motion.section
           variants={containerVariants}
           initial="hidden"
@@ -596,29 +628,16 @@ export default function HabitsPage() {
               />
 
               <div className="grid gap-4 sm:grid-cols-3">
-                <StatPill
-                  icon={<CheckCircle2 className="h-4 w-4" />}
-                  label="Active"
-                  value={activeCount}
-                />
-                <StatPill
-                  icon={<Archive className="h-4 w-4" />}
-                  label="Archived"
-                  value={archivedCount}
-                />
-                <StatPill
-                  icon={<ListTodo className="h-4 w-4" />}
-                  label="Total"
-                  value={habits.length}
-                />
+                <StatPill icon={<CheckCircle2 className="h-4 w-4" />} label="Active" value={activeCount} />
+                <StatPill icon={<Archive className="h-4 w-4" />} label="Archived" value={archivedCount} />
+                <StatPill icon={<ListTodo className="h-4 w-4" />} label="Total" value={habits.length} />
               </div>
 
               <button
-                onClick={openAddModal}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-black transition hover:scale-[1.01]"
+                disabled
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 px-5 py-3 text-sm font-semibold text-white/50 cursor-not-allowed"
               >
-                <Plus className="h-4 w-4" />
-                Add New Habit
+                Create endpoint not added yet
               </button>
             </Card>
           </motion.div>
@@ -657,7 +676,15 @@ export default function HabitsPage() {
 
               <div className="space-y-4">
                 <AnimatePresence mode="popLayout">
-                  {visibleHabits.length > 0 ? (
+                  {loading ? (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="rounded-[24px] border border-dashed border-white/12 bg-white/[0.03] px-6 py-10 text-center"
+                    >
+                      <p className="text-lg font-medium text-white/80">Loading habits...</p>
+                    </motion.div>
+                  ) : visibleHabits.length > 0 ? (
                     visibleHabits.map((habit) => (
                       <motion.div
                         key={habit.id}
@@ -671,9 +698,7 @@ export default function HabitsPage() {
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-lg font-semibold text-white">
-                                {habit.name}
-                              </h3>
+                              <h3 className="text-lg font-semibold text-white">{habit.name}</h3>
 
                               <span
                                 className={`rounded-full px-3 py-1 text-xs font-medium ${
@@ -696,10 +721,6 @@ export default function HabitsPage() {
                               </span>
                             </div>
 
-                            <p className="mt-2 text-sm text-white/55">
-                              {habit.description || "No description provided."}
-                            </p>
-
                             <div className="mt-4 flex flex-wrap gap-3 text-sm text-white/65">
                               {habit.goal !== undefined && (
                                 <span className="rounded-xl bg-white/5 px-3 py-2">
@@ -710,16 +731,10 @@ export default function HabitsPage() {
                               {habit.endDate && (
                                 <span className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2">
                                   <CalendarDays className="h-4 w-4" />
-                                  {habit.endDate}
+                                  {new Date(habit.endDate).toLocaleDateString()}
                                 </span>
                               )}
-
-                              <span className="rounded-xl bg-white/5 px-3 py-2">
-                                Streak: {habit.streak} days
-                              </span>
                             </div>
-
-                            <ProgressBar value={habit.progress} />
                           </div>
 
                           <div className="flex flex-wrap gap-2 xl:w-auto xl:flex-col">
@@ -733,7 +748,7 @@ export default function HabitsPage() {
 
                             {habit.status === "active" ? (
                               <button
-                                onClick={() => handleArchiveHabit(habit.id)}
+                                onClick={() => void handleArchiveHabit(habit.id)}
                                 className="inline-flex items-center gap-2 rounded-2xl border border-indigo-400/20 bg-indigo-400/10 px-4 py-2.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-400/15"
                               >
                                 <Archive className="h-4 w-4" />
@@ -741,16 +756,16 @@ export default function HabitsPage() {
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleUnarchiveHabit(habit.id)}
-                                className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-400/15"
+                                disabled
+                                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/40 cursor-not-allowed"
                               >
                                 <CheckCircle2 className="h-4 w-4" />
-                                Restore
+                                Restore unavailable
                               </button>
                             )}
 
                             <button
-                              onClick={() => handleDeleteHabit(habit.id)}
+                              onClick={() => void handleDeleteHabit(habit.id)}
                               className="inline-flex items-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-2.5 text-sm font-medium text-rose-300 transition hover:bg-rose-400/15"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -769,11 +784,6 @@ export default function HabitsPage() {
                       <p className="text-lg font-medium text-white/80">
                         No {activeTab} habits yet
                       </p>
-                      <p className="mt-2 text-sm text-white/45">
-                        {activeTab === "active"
-                          ? "Create a new habit to get started."
-                          : "Archived habits will appear here."}
-                      </p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -785,10 +795,9 @@ export default function HabitsPage() {
 
       <HabitFormModal
         open={isModalOpen}
-        mode={modalMode}
         initialData={modalInitialData}
         onClose={closeModal}
-        onSubmit={handleSubmitHabit}
+        onSubmit={(data) => void handleSubmitHabit(data)}
       />
     </main>
   );
