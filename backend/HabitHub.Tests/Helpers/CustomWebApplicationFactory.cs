@@ -10,7 +10,7 @@ namespace HabitHub.Tests.Helpers;
 
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
-    private readonly string _dbName = "TestDb_Shared";
+    private readonly string _dbName = $"TestDb_{Guid.NewGuid()}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
