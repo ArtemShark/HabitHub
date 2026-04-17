@@ -17,6 +17,7 @@ import {
   Trash2,
   UserMinus,
   Target,
+  MessageCircle,
 } from "lucide-react";
 import {
   Habit,
@@ -652,6 +653,10 @@ export default function TeamsPage() {
     }
   }
 
+  const openChat = (teamId: string) => {
+    window.open(`/teams/${teamId}/chat`, "_blank");
+  };
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#07090F] px-4 py-6 text-white sm:px-6 md:px-8 md:py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.16),transparent_28%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(244,63,94,0.10),transparent_22%)]" />
@@ -1174,6 +1179,18 @@ export default function TeamsPage() {
                           </AnimatePresence>
                         </div>
                       </div>
+
+
+                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+                      <button
+                        onClick={() => openChat(selectedTeam.habitTeamId)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400"
+                      >
+                        <MessageCircle size={16} />
+                        Chat
+                      </button>
+                    </div>
+
 
                       <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
                         <div className="mb-4">
