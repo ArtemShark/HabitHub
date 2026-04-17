@@ -4,7 +4,7 @@ using HabitHub.Api.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
+using HabitHub.Api.Util;
 
 namespace HabitHub.Api.Controllers;
 
@@ -23,7 +23,7 @@ public class HabitsController : ControllerBase
     [HttpPatch("{habitId:guid}")]
     public async Task<ActionResult<HabitResponse>> UpdateHabit(Guid habitId, UpdateHabitRequest request)
     {
-        var userId = GetCurrentUserId();
+        var userId = GetCurrentUserId.GetUserId(User);
         if (userId == null)
             return Unauthorized();
 
@@ -84,7 +84,7 @@ public class HabitsController : ControllerBase
     [HttpPost("{habitId:guid}/archive")]
     public async Task<ActionResult<HabitResponse>> ArchiveHabit(Guid habitId)
     {
-        var userId = GetCurrentUserId();
+        var userId = GetCurrentUserId.GetUserId(User);
         if (userId == null)
             return Unauthorized();
 
@@ -138,7 +138,7 @@ public class HabitsController : ControllerBase
     [HttpDelete("{habitId:guid}")]
     public async Task<IActionResult> DeleteHabit(Guid habitId)
     {
-        var userId = GetCurrentUserId();
+        var userId = GetCurrentUserId.GetUserId(User);
         if (userId == null)
             return Unauthorized();
 
@@ -161,7 +161,7 @@ public class HabitsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<HabitResponse>>> GetHabitsForMember([FromQuery] Guid memberId)
     {
-        var userId = GetCurrentUserId();
+        var userId = GetCurrentUserId.GetUserId(User);
         if (userId == null)
             return Unauthorized();
 
@@ -185,11 +185,5 @@ public class HabitsController : ControllerBase
             .ToListAsync();
 
         return Ok(habits);
-    }
-
-    private Guid? GetCurrentUserId()
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(userIdClaim, out var userId) ? userId : null;
     }
 }

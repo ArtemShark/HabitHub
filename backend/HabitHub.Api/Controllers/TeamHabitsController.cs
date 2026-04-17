@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using HabitHub.Api.Util;
 
 namespace HabitHub.Api.Controllers;
 
@@ -24,7 +25,7 @@ public class TeamHabitsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<HabitResponse>>> GetHabits(Guid teamId, [FromQuery] HabitState? state)
     {
-        var userId = GetCurrentUserId();
+        var userId = GetCurrentUserId.GetUserId(User);
         if (userId == null)
             return Unauthorized();
 
@@ -65,7 +66,7 @@ public class TeamHabitsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<HabitResponse>> CreateHabit(Guid teamId, CreateHabitRequest request)
     {
-        var userId = GetCurrentUserId();
+        var userId = GetCurrentUserId.GetUserId(User);
         if (userId == null)
             return Unauthorized();
 
@@ -115,11 +116,5 @@ public class TeamHabitsController : ControllerBase
         };
 
         return Created($"/api/habits/{habit.HabitId}", response);
-    }
-
-    private Guid? GetCurrentUserId()
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(userIdClaim, out var userId) ? userId : null;
     }
 }
