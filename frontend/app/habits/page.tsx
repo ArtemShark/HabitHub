@@ -489,6 +489,7 @@ export default function HabitsPage() {
       endDate: data.endDate || undefined,
     };
 
+<<<<<<< Updated upstream
     if (modalMode === "add") {
       const newHabit: Habit = {
         id: Date.now(),
@@ -496,7 +497,20 @@ export default function HabitsPage() {
         status: "active",
         streak: 0,
         progress: 0,
+=======
+    try {
+      setError("");
+      setSuccess("");
+
+      const payload: UpdateHabitRequestDto = {
+        name: data.name.trim(),
+        habitType: data.type === "value" ? "Quantitative" : "Binary",
+        goal: data.type === "value" && data.goal ? data.goal : null,
+        unit: data.type === "value" ? data.unit.trim() || null : null,
+        expiryDate: data.endDate ? new Date(data.endDate).toISOString() : null,
+>>>>>>> Stashed changes
       };
+      console.log("PATCH payload:", payload);
 
       setHabits((prev) => [newHabit, ...prev]);
     } else if (modalMode === "edit" && editingHabitId !== null) {

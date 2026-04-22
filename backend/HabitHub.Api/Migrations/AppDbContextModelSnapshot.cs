@@ -41,7 +41,7 @@ namespace HabitHub.Api.Migrations
                     b.Property<int>("HabitState")
                         .HasColumnType("integer");
 
-                    b.Property<Guid?>("HabitTeamId")
+                    b.Property<Guid>("HabitTeamId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("HabitType")
@@ -327,7 +327,9 @@ namespace HabitHub.Api.Migrations
 
                     b.HasOne("HabitHub.Api.Models.HabitTeam", "Team")
                         .WithMany("Habits")
-                        .HasForeignKey("HabitTeamId");
+                        .HasForeignKey("HabitTeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Creator");
 
