@@ -510,10 +510,12 @@ export default function HabitsPage() {
       const payload: UpdateHabitRequestDto = {
         name: data.name.trim(),
         habitType: data.type === "value" ? 1 : 0,
-        goal: data.type === "value" && data.goal ? Number(data.goal) : null,
+        goal: data.type === "value" && data.goal ? data.goal : null,
         unit: data.type === "value" ? data.unit.trim() || null : null,
         expiryDate: data.endDate ? new Date(data.endDate).toISOString() : null,
       };
+
+      console.log("PATCH payload:", payload);
 
       const updated = await updateHabit(editingHabitId, payload);
 

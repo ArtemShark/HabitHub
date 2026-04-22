@@ -3,7 +3,7 @@
 <NotificationDropdown />
 import Link from "next/link";
 import { motion, Variants, AnimatePresence } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   Clock3,
@@ -17,8 +17,14 @@ import {
   ShieldCheck,
   User,
   LogOut,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import NotificationDropdown from "../notifications/NotificationDropdown";
+import { Habit, HabitResponseDto } from "../dto/Habit";
+import { mapHabit } from "../auxiliary/mapHabit";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 type Session = {
   id: number;
@@ -27,23 +33,83 @@ type Session = {
   current?: boolean;
 };
 
-type Goal = {
-  id: number;
-  title: string;
-  done: boolean;
-};
-
 const sessions: Session[] = [
   { id: 1, device: "Windows Laptop", location: "Warsaw, Poland", current: true },
   { id: 2, device: "iPhone", location: "Warsaw, Poland" },
   { id: 3, device: "Tablet", location: "Krakow, Poland" },
 ];
 
-const goals: Goal[] = [
-  { id: 1, title: "Drink 2L of water", done: true },
-  { id: 2, title: "Read 20 pages", done: false },
-  { id: 3, title: "Walk 8k steps", done: false },
-];
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token") || sessionStorage.getItem("token");
+}
+
+function parseJwt(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function getCurrentUserId(): string | null {
+  const token = getToken();
+  if (!token) return null;
+
+  const payload = parseJwt(token);
+  if (!payload) return null;
+
+  const keys = [
+    "nameid",
+    "sub",
+    "userId",
+    "userid",
+    "id",
+    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+  ];
+
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const token = getToken();
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
+  const dtos = await apiFetch<HabitResponseDto[]>(`/api/habits?memberId=${memberId}`, {
+    method: "GET",
+  });
+  return dtos.map(mapHabit);
+}
 
 const progressData = [
   { value: 82, color: "#4F46E5", label: "Habits" },
@@ -296,6 +362,74 @@ function MultiRingProgress() {
 }
 
 export default function HomePage() {
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habitsLoading, setHabitsLoading] = useState(true);
+  const [habitsError, setHabitsError] = useState("");
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+
+  const currentUserId = useMemo(() => getCurrentUserId(), []);
+
+  const hasFetchedRef = useRef(false);
+
+  useEffect(() => {
+    async function loadHabits() {
+      if (!currentUserId) {
+        setHabitsError("Could not determine current user.");
+        setHabitsLoading(false);
+        return;
+      }
+
+      try {
+        if (!hasFetchedRef.current) {
+          setHabitsLoading(true);
+        }
+        setHabitsError("");
+        const data = await fetchHabitsForMember(currentUserId);
+        setHabits(data);
+        hasFetchedRef.current = true;
+      } catch (err) {
+        setHabitsError(err instanceof Error ? err.message : "Failed to load habits.");
+      } finally {
+        setHabitsLoading(false);
+      }
+    }
+
+    void loadHabits();
+
+    const interval = setInterval(() => {
+      void loadHabits();
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, [currentUserId]);
+
+  const todaysGoals = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    return habits.filter((habit) => {
+      if (habit.status !== "active") return false;
+      if (habit.endDate) {
+        const end = new Date(habit.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (end < now) return false;
+      }
+      return true;
+    });
+  }, [habits]);
+
+  const toggleGoal = (habitId: string) => {
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(habitId)) {
+        next.delete(habitId);
+      } else {
+        next.add(habitId);
+      }
+      return next;
+    });
+  };
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#07090F] px-4 py-6 text-white sm:px-6 md:px-8 md:py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.16),transparent_28%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(244,63,94,0.10),transparent_22%)]" />
@@ -435,43 +569,64 @@ export default function HomePage() {
             />
 
             <Card className="min-h-[320px]">
-              <div className="space-y-4">
-                {goals.map((goal) => (
-                  <motion.label
-                    key={goal.id}
-                    whileHover={{ y: -2, scale: 1.01 }}
-                    className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
-                  >
-                    <input
-                      type="checkbox"
-                      defaultChecked={goal.done}
-                      className="mt-1 h-4 w-4 rounded accent-emerald-400"
-                    />
+              {habitsLoading ? (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3">
+                  <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+                  <p className="text-sm text-white/50">Loading habits…</p>
+                </div>
+              ) : habitsError ? (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center">
+                  <AlertCircle className="h-6 w-6 text-rose-400/70" />
+                  <p className="text-sm text-rose-300/80">{habitsError}</p>
+                </div>
+              ) : todaysGoals.length === 0 ? (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center">
+                  <Target className="h-6 w-6 text-white/30" />
+                  <p className="text-sm text-white/50">No goals for today.</p>
+                  <p className="text-xs text-white/35">
+                    Create habits in the Habits tab and they will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {todaysGoals.map((habit) => {
+                    const done = completedIds.has(habit.id);
 
-                    <div className="flex-1">
-                      <p
-                        className={`font-medium ${
-                          goal.done ? "text-white/45 line-through" : "text-white/90"
-                        }`}
+                    return (
+                      <motion.label
+                        key={habit.id}
+                        whileHover={{ y: -2, scale: 1.01 }}
+                        className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
                       >
-                        {goal.title}
-                      </p>
+                        <input
+                          type="checkbox"
+                          checked={done}
+                          onChange={() => toggleGoal(habit.id)}
+                          className="mt-1 h-4 w-4 rounded accent-emerald-400"
+                        />
 
-                      <p className="mt-1 text-sm text-white/45">
-                        {goal.done ? "Completed today" : "Still in progress"}
-                      </p>
-                    </div>
-                  </motion.label>
-                ))}
+                        <div className="flex-1">
+                          <p
+                            className={`font-medium ${
+                              done ? "text-white/45 line-through" : "text-white/90"
+                            }`}
+                          >
+                            {habit.name}
+                          </p>
 
-                <motion.button
-                  whileHover={{ y: -2, scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="mt-2 w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/75 transition hover:border-white/25 hover:bg-white/8 hover:text-white"
-                >
-                  + Add goal
-                </motion.button>
-              </div>
+                          <p className="mt-1 text-sm text-white/45">
+                            {done
+                              ? "Completed today"
+                              : habit.type === "value" && habit.goal
+                                ? `Target: ${habit.goal}${habit.unit ? ` ${habit.unit}` : ""}`
+                                : "Still in progress"}
+                          </p>
+                        </div>
+                      </motion.label>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
           </motion.div>
         </motion.section>
