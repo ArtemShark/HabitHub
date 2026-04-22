@@ -1,6 +1,8 @@
 ﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using HabitHub.Api.Contracts.Auth;
 using HabitHub.Api.Data;
 using HabitHub.Api.Enums;
@@ -16,6 +18,11 @@ namespace HabitHub.Tests.Helpers;
 
 public static class TestHelper
 {
+    public static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     public static AppDbContext CreateInMemoryDbContext(string? dbName = null)
     {
@@ -189,7 +196,7 @@ public static class TestHelper
         return invite;
     }
 
-    
+
     public static async Task<AuthResponse> RegisterAndAuthenticateAsync(
         HttpClient client,
         string? username = null,
@@ -206,7 +213,7 @@ public static class TestHelper
         var response = await client.PostAsJsonAsync("/api/auth/register", request);
         response.EnsureSuccessStatusCode();
 
-        var body = await response.Content.ReadFromJsonAsync<AuthResponse>()
+        var body = await response.Content.ReadFromJsonAsync<AuthResponse>(JsonOptions)
                    ?? throw new InvalidOperationException("Register response was empty");
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Token);
