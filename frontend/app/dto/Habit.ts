@@ -16,8 +16,6 @@ export type HabitResponseDto = {
 export type UpdateHabitRequestDto = {
   name?: string;
   goal?: string | null;
-  habitType?: string;
-  goal?: string | null;
   habitType?: number;
   expiryDate?: string | null;
   unit?: string | null;
