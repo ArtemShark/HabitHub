@@ -500,34 +500,21 @@ export default function HabitsPage() {
     setEditingHabitId(null);
   };
 
-  const handleSubmitHabit = (data: HabitFormData) => {
-    const mappedHabit: Omit<Habit, "id" | "status" | "streak" | "progress"> = {
-      name: data.name.trim(),
-      description: data.description.trim(),
-      type: data.type,
-      goal: data.type === "value" && data.goal ? Number(data.goal) : undefined,
-      unit: data.type === "value" ? data.unit.trim() : undefined,
-      endDate: data.endDate || undefined,
-    };
+  const handleSubmitHabit = async (data: HabitFormData) => {
+    if (!editingHabitId) return;
 
-    if (modalMode === "add") {
-      const newHabit: Habit = {
-        id: Date.now(),
-        ...mappedHabit,
-        status: "active",
-        streak: 0,
-        progress: 0,
     try {
       setError("");
       setSuccess("");
 
       const payload: UpdateHabitRequestDto = {
         name: data.name.trim(),
-        habitType: data.type === "value" ? "Quantitative" : "Binary",
+        habitType: data.type === "value" ? 1 : 0,
         goal: data.type === "value" && data.goal ? data.goal : null,
         unit: data.type === "value" ? data.unit.trim() || null : null,
         expiryDate: data.endDate ? new Date(data.endDate).toISOString() : null,
       };
+
       console.log("PATCH payload:", payload);
 
       const updated = await updateHabit(editingHabitId, payload);
