@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TeamsPage from "./page";
+import { head } from "framer-motion/client";
 
 jest.mock("next/link", () => {
     return ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -85,13 +86,25 @@ describe("TeamsPage", () => {
             writable: true,
         });
 
-        global.fetch = jest.fn();
+        global.fetch = jest.fn(() =>
+        Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: {
+                get: () => "application/json",
+            },
+            json: async () => ({ token: "fake-token", user: { id: "1" } }),
+        } as unknown as Response)
+        );
     });
 
     function jsonResponse(data: unknown, status = 200) {
         return Promise.resolve({
             ok: status >= 200 && status < 300,
             status,
+            headers: {
+            get: () => "application/json",
+            },
             json: async () => data,
             text: async () => JSON.stringify(data),
         });
@@ -101,8 +114,11 @@ describe("TeamsPage", () => {
         return Promise.resolve({
             ok: false,
             status,
+            headers: {
+            get: () => "text/plain",
+            },
             json: async () => {
-                throw new Error("No JSON body");
+            throw new Error("No JSON body");
             },
             text: async () => message,
         });
@@ -210,6 +226,9 @@ describe("TeamsPage", () => {
         resolveCreate({
             ok: true,
             status: 201,
+            headers: {
+                get: () => "application/json",
+            },
             json: async () => createdTeam,
             text: async () => JSON.stringify(createdTeam),
         });
@@ -309,6 +328,9 @@ describe("TeamsPage", () => {
         resolveJoin({
             ok: true,
             status: 200,
+            headers: {
+                get: () => "application/json",
+            },
             json: async () => ({}),
             text: async () => "",
         });

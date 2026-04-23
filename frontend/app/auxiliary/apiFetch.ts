@@ -31,7 +31,7 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
       message = "Unauthorized. Please log in again.";
     }
 
-    const contentType = response.headers.get("content-type") || "";
+    const contentType = response.headers?.get?.("content-type") || "";
 
     try {
       if (contentType.includes("application/json")) {

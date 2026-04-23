@@ -39,7 +39,16 @@ describe("HabitHubLoginPage", () => {
       writable: true,
     });
 
-    global.fetch = jest.fn();
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: {
+          get: () => "application/json",
+        },
+        json: async () => ({ token: "fake-token", user: { id: "1" } }),
+      } as unknown as Response)
+    );
   });
 
   it("renders login form", () => {
@@ -54,6 +63,10 @@ describe("HabitHubLoginPage", () => {
   it("logs in successfully and stores token in sessionStorage when remember me is unchecked", async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
+      status: 200,
+      headers: {
+        get: () => "application/json",
+      },
       json: async () => ({
         token: "fake-token",
         email: "test@example.com",
@@ -90,6 +103,10 @@ describe("HabitHubLoginPage", () => {
   it("logs in successfully and stores token in localStorage when remember me is checked", async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
+      status: 200,
+      headers: {
+        get: () => "application/json",
+      },
       json: async () => ({
         token: "fake-token",
         email: "test@example.com",
@@ -118,6 +135,10 @@ describe("HabitHubLoginPage", () => {
   it("shows error when login fails", async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: false,
+      status: 401,
+      headers: {
+        get: () => "text/plain",
+      },
       text: async () => "Invalid credentials",
     });
 
@@ -133,7 +154,7 @@ describe("HabitHubLoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/invalid email or password/i)).toBeInTheDocument();
+      expect(screen.getByText(/invalid credentials/i)).toBeInTheDocument();
     });
 
     expect(pushMock).not.toHaveBeenCalled();
@@ -164,6 +185,10 @@ describe("HabitHubLoginPage", () => {
 
     resolveFetch({
       ok: true,
+      status: 200,
+      headers: {
+        get: () => "application/json",
+      },
       json: async () => ({
         token: "fake-token",
         email: "test@example.com",

@@ -29,7 +29,16 @@ describe("RegisterPage", () => {
       writable: true,
     });
 
-    global.fetch = jest.fn();
+    global.fetch = jest.fn(() =>
+        Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: {
+                get: () => "application/json",
+            },
+            json: async () => ({ token: "fake-token", user: { id: "1" } }),
+        } as unknown as Response)
+        );
   });
 
   it("renders register form", () => {
@@ -75,6 +84,10 @@ describe("RegisterPage", () => {
 
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
+      status: 200,
+      headers: {
+        get: () => "application/json",
+      },
       json: async () => responseData,
     });
 
@@ -110,6 +123,10 @@ describe("RegisterPage", () => {
   it("shows backend error when registration fails", async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: false,
+      status: 400,
+      headers: {
+        get: () => "text/plain",
+      },
       text: async () => "Email already in use",
     });
 
@@ -170,6 +187,10 @@ describe("RegisterPage", () => {
 
     resolveFetch({
       ok: true,
+      status: 200,
+      headers: {
+        get: () => "application/json",
+      },
       json: async () => ({
         token: "register-token",
         email: "test@example.com",
