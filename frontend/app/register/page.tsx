@@ -63,22 +63,37 @@ export default function RegisterPage() {
       setLoading(false);
       return;
     }
-    
-    const data = await apiFetch<{ token: string; id: string; username: string }>(
-      "/api/auth/register",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email,
-          password,
-          Username: username,
-        }),
-      }
-    );
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data));
 
-    router.push("/dashboard");
+    try {
+      const data = await apiFetch<{ token: string; email: string; username: string }>(
+        "/api/auth/register",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email,
+            password,
+            username,
+          }),
+        }
+      );
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          email: data.email,
+          username: data.username,
+        })
+      );
+
+      router.push("/dashboard");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Registration failed";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

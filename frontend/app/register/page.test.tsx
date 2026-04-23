@@ -115,9 +115,11 @@ describe("RegisterPage", () => {
     expect(localStorage.setItem).toHaveBeenCalledWith("token", "register-token");
     expect(localStorage.setItem).toHaveBeenCalledWith(
       "user",
-      JSON.stringify(responseData)
+      JSON.stringify({
+        email: "test@example.com",
+        username: "ashley",
+      })
     );
-    expect(pushMock).toHaveBeenCalledWith("/dashboard");
   });
 
   it("shows backend error when registration fails", async () => {

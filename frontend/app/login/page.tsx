@@ -40,6 +40,12 @@ const itemVariants: Variants = {
   },
 };
 
+type LoginResponse = {
+  token: string;
+  email: string;
+  username: string;
+};
+
 export default function HabitHubLoginPage() {
   const router = useRouter();
 
@@ -56,24 +62,13 @@ export default function HabitHubLoginPage() {
     setError("");
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/login`,
+      const data = await apiFetch<{ token: string; email: string; username: string }>(
+        "/api/auth/login",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify({ email, password }),
         }
       );
-
-      if (!response.ok) {
-        const message = await response.text();
-        console.error("Login failed:", message);
-        throw new Error("Invalid credentials");
-      }
-    );
-
 
       if (rememberMe) {
         sessionStorage.removeItem("token");
@@ -92,6 +87,13 @@ export default function HabitHubLoginPage() {
       );
 
       router.push("/dashboard");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Invalid credentials";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -113,7 +115,7 @@ export default function HabitHubLoginPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-black shadow-lg">
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
-                <span className="text-sm font-medium tracking-[0.18em] text-white/85 uppercase">
+                <span className="text-sm font-medium uppercase tracking-[0.18em] text-white/85">
                   HabitHub
                 </span>
               </div>
@@ -176,15 +178,12 @@ export default function HabitHubLoginPage() {
             animate="show"
             className="w-full max-w-md"
           >
-            <motion.div
-              variants={itemVariants}
-              className="mb-6 lg:hidden"
-            >
+            <motion.div variants={itemVariants} className="mb-6 lg:hidden">
               <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-md">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-black shadow-lg">
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
-                <span className="text-sm font-medium tracking-[0.18em] text-white/85 uppercase">
+                <span className="text-sm font-medium uppercase tracking-[0.18em] text-white/85">
                   HabitHub
                 </span>
               </div>
