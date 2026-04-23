@@ -15,8 +15,12 @@ import {
   EyeOff,
   ShieldCheck,
 } from "lucide-react";
+import { apiFetch, getToken } from "../auxiliary/apiFetch";
+//import { apiFetch } from "../auxiliary/apiFetch";
 
 type Toast = { id: number; message: string; type: "success" | "error" };
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -469,38 +473,66 @@ export default function ProfilePage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
 
-function handleSaveProfile(u: string, e: string) {
-  try {
-    if (!e.includes("@")) {
-      addToast("Invalid email format", "error");
-      return;
+
+  async function handleSaveProfile(u: string, e: string) {
+    try {
+      if (!e.includes("@")) {
+        addToast("Invalid email format", "error");
+        return;
+      }
+  
+      await apiFetch<{ token: string; id: string; username: string }>(
+        "/api/profile/info",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            username: u,
+            email: e,
+          }),
+        }
+      );
+
+      setUsername(u);
+      setEmail(e);
+
+      const stored = JSON.parse(localStorage.getItem("user") || "{}");
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          ...stored,
+          username: u,
+          email: e,
+        })
+      );
+
+      setModal(null);
+      addToast("Profile updated successfully", "success");
+    } catch (err: any) {
+      console.error(err);
+      addToast("Failed to update profile", "error");
     }
-
-    setUsername(u);
-    setEmail(e);
-
-    const stored = JSON.parse(localStorage.getItem("user") || "{}");
-
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        ...stored,
-        username: u,
-        email: e,
-      })
-    );
-
-    setModal(null);
-    addToast("Profile updated successfully", "success");
-  } catch {
-    addToast("Failed to update profile", "error");
   }
+  async function handleSavePassword(current: string, next: string) {
+    try {
+      await apiFetch<{ token: string; id: string;}>(
+        "/api/profile/password",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            currentPassword: current,
+            newPassword:next,
+          }),
+        }
+      );
+
+      setModal(null);
+      addToast("Password changed successfully", "success");
+    } catch (err: any) {
+  console.error(err);
+  addToast(err.message || "Failed to change password", "error");
 }
-  function handleSavePassword(_current: string, _next: string) {
-    setModal(null);
-    addToast("Password changed successfully", "success");
   }
-
   const initials = username
     .split(" ")
     .map((n) => n[0])
