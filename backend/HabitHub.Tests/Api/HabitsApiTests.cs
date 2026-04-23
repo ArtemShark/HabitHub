@@ -24,7 +24,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         client ??= _client;
         var response = await client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = name });
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<TeamResponse>())!;
+        return (await response.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions))!;
     }
 
 
@@ -50,7 +50,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    
+
     [Theory]
     [InlineData(HabitType.Binary, null)]
     [InlineData(HabitType.Quantitative, "glasses")]
@@ -72,7 +72,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
             });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var habit = await response.Content.ReadFromJsonAsync<HabitResponse>();
+        var habit = await response.Content.ReadFromJsonAsync<HabitResponse>(TestHelper.JsonOptions);
         Assert.NotNull(habit);
         Assert.Equal(type, habit!.HabitType);
         Assert.Equal(HabitState.Active, habit.HabitState);
@@ -128,7 +128,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var team = await CreateTeamAsync();
         var inviteResponse = await _client.PostAsync($"/api/teams/{team.HabitTeamId}/invite-codes", content: null);
-        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>();
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
 
         var (memberClient, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
         await memberClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
@@ -169,7 +169,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         var listResponse = await _client.GetAsync(url);
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
 
-        var habits = await listResponse.Content.ReadFromJsonAsync<List<HabitResponse>>();
+        var habits = await listResponse.Content.ReadFromJsonAsync<List<HabitResponse>>(TestHelper.JsonOptions);
         Assert.NotNull(habits);
         Assert.Equal(expected, habits!.Count);
         if (filter.HasValue)
@@ -203,9 +203,9 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
             new UpdateHabitRequest { Name = "New name" });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var updated = await response.Content.ReadFromJsonAsync<HabitResponse>();
+        var updated = await response.Content.ReadFromJsonAsync<HabitResponse>(TestHelper.JsonOptions);
         Assert.Equal("New name", updated!.Name);
-        Assert.Equal("Old goal", updated.Goal); 
+        Assert.Equal("Old goal", updated.Goal);
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.PostAsync($"/api/habits/{habit.HabitId}/archive", content: null);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<HabitResponse>();
+        var body = await response.Content.ReadFromJsonAsync<HabitResponse>(TestHelper.JsonOptions);
         Assert.Equal(HabitState.Archived, body!.HabitState);
     }
 
@@ -248,7 +248,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         var second = await _client.PostAsync($"/api/habits/{habit.HabitId}/archive", content: null);
 
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        var body = await second.Content.ReadFromJsonAsync<HabitResponse>();
+        var body = await second.Content.ReadFromJsonAsync<HabitResponse>(TestHelper.JsonOptions);
         Assert.Equal(HabitState.Archived, body!.HabitState);
     }
 
@@ -262,7 +262,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.DeleteAsync($"/api/habits/{habit.HabitId}");
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        var list = await _client.GetFromJsonAsync<List<HabitResponse>>($"/api/teams/{team.HabitTeamId}/habits");
+        var list = await _client.GetFromJsonAsync<List<HabitResponse>>($"/api/teams/{team.HabitTeamId}/habits", TestHelper.JsonOptions);
         Assert.DoesNotContain(list!, h => h.HabitId == habit.HabitId);
     }
 
@@ -294,6 +294,6 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
                 ExpiryDate = DateTime.UtcNow.AddDays(30)
             });
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<HabitResponse>())!;
+        return (await response.Content.ReadFromJsonAsync<HabitResponse>(TestHelper.JsonOptions))!;
     }
 }

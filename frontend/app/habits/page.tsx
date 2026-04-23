@@ -19,8 +19,8 @@ import {
 } from "lucide-react";
 import { Habit, HabitFormData, HabitResponseDto, UpdateHabitRequestDto, HabitStatus, HabitType } from "../dto/Habit";
 import { mapHabit } from "../auxiliary/mapHabit";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+import { apiFetch } from "../auxiliary/apiFetch";
+import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -43,89 +43,6 @@ const itemVariants: Variants = {
   },
 };
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token") || sessionStorage.getItem("token");
-}
-
-function parseJwt(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
-
-function getCurrentUserId(): string | null {
-  const token = getToken();
-  if (!token) return null;
-
-  const payload = parseJwt(token);
-  if (!payload) return null;
-
-  const keys = [
-    "nameid",
-    "sub",
-    "userId",
-    "userid",
-    "id",
-    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
-  ];
-
-  for (const key of keys) {
-    const value = payload[key];
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const token = getToken();
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    let message = `API request failed with status ${response.status}`;
-
-    if (response.status === 401) {
-      message = "Unauthorized. Please log in again.";
-    }
-
-    try {
-      const errorData = await response.json();
-      message = errorData?.message || errorData?.title || message;
-    } catch {
-      try {
-        const text = await response.text();
-        if (text) message = text;
-      } catch {}
-    }
-
-    throw new Error(message);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
-}
 
 async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
   const dtos = await apiFetch<HabitResponseDto[]>(`/api/habits?memberId=${memberId}`, {
@@ -509,11 +426,13 @@ export default function HabitsPage() {
 
       const payload: UpdateHabitRequestDto = {
         name: data.name.trim(),
-        habitType: data.type === "value" ? 1 : 0,
-        goal: data.type === "value" && data.goal ? Number(data.goal) : null,
+        habitType: data.type,
+        goal: data.type === "value" && data.goal ? data.goal : null,
         unit: data.type === "value" ? data.unit.trim() || null : null,
         expiryDate: data.endDate ? new Date(data.endDate).toISOString() : null,
       };
+
+      console.log("PATCH payload:", payload);
 
       const updated = await updateHabit(editingHabitId, payload);
 

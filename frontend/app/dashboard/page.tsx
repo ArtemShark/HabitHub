@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { motion, Variants, AnimatePresence } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Bell,
   Clock3,
@@ -16,7 +17,14 @@ import {
   ShieldCheck,
   User,
   LogOut,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
+import NotificationDropdown from "../notifications/NotificationDropdown";
+import { Habit, HabitEntryRequest, HabitEntryResponse, HabitResponseDto } from "../dto/Habit";
+import { mapHabit } from "../auxiliary/mapHabit";
+import { apiFetch } from "../auxiliary/apiFetch";
+import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
 
 type Session = {
   id: number;
@@ -25,23 +33,25 @@ type Session = {
   current?: boolean;
 };
 
-type Goal = {
-  id: number;
-  title: string;
-  done: boolean;
-};
-
 const sessions: Session[] = [
   { id: 1, device: "Windows Laptop", location: "Warsaw, Poland", current: true },
   { id: 2, device: "iPhone", location: "Warsaw, Poland" },
   { id: 3, device: "Tablet", location: "Krakow, Poland" },
 ];
 
-const goals: Goal[] = [
-  { id: 1, title: "Drink 2L of water", done: true },
-  { id: 2, title: "Read 20 pages", done: false },
-  { id: 3, title: "Walk 8k steps", done: false },
-];
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token") || sessionStorage.getItem("token");
+}
+
+
+async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
+  const dtos = await apiFetch<HabitResponseDto[]>(`/api/habits?memberId=${memberId}`, {
+    method: "GET",
+  });
+  return dtos.map(mapHabit);
+}
+
 
 const progressData = [
   { value: 82, color: "#4F46E5", label: "Habits" },
@@ -294,6 +304,156 @@ function MultiRingProgress() {
 }
 
 export default function HomePage() {
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habitsLoading, setHabitsLoading] = useState(true);
+  const [habitsError, setHabitsError] = useState("");
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [selectedHabit, setSelectedHabit] = useState<(typeof todaysGoals)[number] | null>(null);
+  const [logValue, setLogValue] = useState("");
+  const [logNote, setLogNote] = useState("");
+  const [logStatus, setLogStatus] = useState<"Logged" | "Skipped">("Logged");
+
+  const currentUserId = useMemo(() => getCurrentUserId(), []);
+
+  const hasFetchedRef = useRef(false);
+
+  useEffect(() => {
+    async function loadHabits() {
+      if (!currentUserId) {
+        setHabitsError("Could not determine current user.");
+        setHabitsLoading(false);
+        return;
+      }
+
+      try {
+        if (!hasFetchedRef.current) {
+          setHabitsLoading(true);
+        }
+        setHabitsError("");
+        const data = await fetchHabitsForMember(currentUserId);
+        setHabits(data);
+        
+        const today = new Date().toISOString().split("T")[0];
+
+        const entriesPerHabit = await Promise.all(
+          data.map(async (habit) => {
+            const entries = await apiFetch<HabitEntryResponse[]>(
+              `/api/habits/${habit.id}/entries?date=${today}`,
+              { method: "GET" }
+            );
+
+            return { habitId: habit.id, entries };
+          })
+        );
+
+        const nextCompletedIds = new Set<string>();
+
+        for (const { habitId, entries } of entriesPerHabit) {
+          if (entries.some((entry) => entry.status === "Logged")) {
+            nextCompletedIds.add(habitId);
+          }
+        }
+
+        setCompletedIds(nextCompletedIds);
+
+        hasFetchedRef.current = true;
+      } catch (err) {
+        setHabitsError(err instanceof Error ? err.message : "Failed to load habits.");
+      } finally {
+        setHabitsLoading(false);
+      }
+    }
+
+    void loadHabits();
+
+    const interval = setInterval(() => {
+      void loadHabits();
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, [currentUserId]);
+
+  const todaysGoals = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    return habits.filter((habit) => {
+      if (habit.status !== "active") return false;
+      if (habit.endDate) {
+        const end = new Date(habit.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (end < now) return false;
+      }
+      return true;
+    });
+  }, [habits]);
+
+  const toggleGoal = (habitId: string) => {
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(habitId)) {
+        next.delete(habitId);
+      } else {
+        next.add(habitId);
+      }
+      return next;
+    });
+  };
+
+  const openLogModal = (habit: (typeof todaysGoals)[number]) => {
+    setSelectedHabit(habit);
+    setLogValue("");
+    setLogNote("");
+    setLogStatus("Logged");
+  };
+
+  const closeLogModal = () => {
+    setSelectedHabit(null);
+    setLogValue("");
+    setLogNote("");
+    setLogStatus("Logged");
+  };
+
+  const submitHabitLog = async () => {
+    if (!selectedHabit) return;
+
+    const body =
+      selectedHabit.type === "value"
+        ? {
+            status: logStatus,
+            value: logValue === "" ? null : Number(logValue),
+            notes: logNote,
+          }
+        : {
+            status: logStatus,
+            notes: logNote,
+          };
+
+    try {
+      await apiFetch<HabitEntryResponse>(`/api/habits/${selectedHabit.id}/entries`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (logStatus === "Logged") {
+        setCompletedIds((prev) => new Set(prev).add(selectedHabit.id));
+      } else {
+        setCompletedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(selectedHabit.id);
+          return next;
+        });
+      }
+
+      closeLogModal();
+    } catch (error) {
+      console.error("Error logging habit:", error);
+    }
+  };
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#07090F] px-4 py-6 text-white sm:px-6 md:px-8 md:py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.16),transparent_28%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(244,63,94,0.10),transparent_22%)]" />
@@ -325,9 +485,7 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-3 self-start lg:self-auto">
-            <IconButton href="/notifications">
-              <Bell className="h-5 w-5" />
-            </IconButton>
+            <NotificationDropdown/>
             <IconButton href="/sessions">
               <Clock3 className="h-5 w-5" />
             </IconButton>
@@ -435,44 +593,170 @@ export default function HomePage() {
             />
 
             <Card className="min-h-[320px]">
-              <div className="space-y-4">
-                {goals.map((goal) => (
-                  <motion.label
-                    key={goal.id}
-                    whileHover={{ y: -2, scale: 1.01 }}
-                    className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
-                  >
-                    <input
-                      type="checkbox"
-                      defaultChecked={goal.done}
-                      className="mt-1 h-4 w-4 rounded accent-emerald-400"
-                    />
+              {habitsLoading ? (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3">
+                  <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+                  <p className="text-sm text-white/50">Loading habits…</p>
+                </div>
+              ) : habitsError ? (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center">
+                  <AlertCircle className="h-6 w-6 text-rose-400/70" />
+                  <p className="text-sm text-rose-300/80">{habitsError}</p>
+                </div>
+              ) : todaysGoals.length === 0 ? (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center">
+                  <Target className="h-6 w-6 text-white/30" />
+                  <p className="text-sm text-white/50">No goals for today.</p>
+                  <p className="text-xs text-white/35">
+                    Create habits in the Habits tab and they will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {todaysGoals.map((habit) => {
+                    const done = completedIds.has(habit.id);
 
-                    <div className="flex-1">
-                      <p
-                        className={`font-medium ${
-                          goal.done ? "text-white/45 line-through" : "text-white/90"
-                        }`}
+                    return (
+                      <motion.div
+                        key={habit.id}
+                        whileHover={{ y: -2, scale: 1.01 }}
+                        onClick={() => openLogModal(habit)}
+                        className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/10"
                       >
-                        {goal.title}
-                      </p>
+                        <input
+                          type="checkbox"
+                          checked={done}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            openLogModal(habit);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-1 h-4 w-4 rounded accent-emerald-400"
+                        />
 
-                      <p className="mt-1 text-sm text-white/45">
-                        {goal.done ? "Completed today" : "Still in progress"}
-                      </p>
-                    </div>
-                  </motion.label>
-                ))}
+                        <div className="flex-1">
+                          <p
+                            className={`font-medium ${
+                              done ? "text-white/45 line-through" : "text-white/90"
+                            }`}
+                          >
+                            {habit.name}
+                          </p>
 
-                <motion.button
-                  whileHover={{ y: -2, scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="mt-2 w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/75 transition hover:border-white/25 hover:bg-white/8 hover:text-white"
-                >
-                  + Add goal
-                </motion.button>
-              </div>
+                          <p className="mt-1 text-sm text-white/45">
+                            {done
+                              ? "Completed today"
+                              : habit.type === "value" && habit.goal
+                                ? `Target: ${habit.goal}${habit.unit ? ` ${habit.unit}` : ""}`
+                                : "Still in progress"}
+                          </p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+                
+              )}
             </Card>
+            <AnimatePresence>
+              {selectedHabit && (
+                <motion.div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={closeLogModal}
+                >
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 16 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                    transition={{ duration: 0.2 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950/95 p-6 shadow-2xl"
+                  >
+                    <div className="mb-5 flex items-start justify-between">
+                      <div>
+                        <h3 className="text-xl font-semibold text-white">
+                          Log habit
+                        </h3>
+                        <p className="mt-1 text-sm text-white/50">
+                          {selectedHabit.name}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={closeLogModal}
+                        className="rounded-full p-2 text-white/60 transition hover:bg-white/10 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-sm text-white/70">Status</label>
+                        <select
+                          value={logStatus}
+                          onChange={(e) => setLogStatus(e.target.value as "Logged" | "Skipped")}
+                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
+                        >
+                          <option value="Logged" className="bg-slate-900">
+                            Logged
+                          </option>
+                          <option value="Skipped" className="bg-slate-900">
+                            Skipped
+                          </option>
+                        </select>
+                      </div>
+
+                      {selectedHabit.type === "value" && (
+                        <div>
+                          <label className="mb-2 block text-sm text-white/70">
+                            Value {selectedHabit.unit ? `(${selectedHabit.unit})` : ""}
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={logValue}
+                            onChange={(e) => setLogValue(e.target.value)}
+                            placeholder="Enter value"
+                            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 outline-none"
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="mb-2 block text-sm text-white/70">Note</label>
+                        <textarea
+                          value={logNote}
+                          onChange={(e) => setLogNote(e.target.value)}
+                          placeholder="Optional note"
+                          rows={4}
+                          className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex gap-3">
+                      <button
+                        onClick={closeLogModal}
+                        className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white/80 transition hover:bg-white/10"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        onClick={submitHabitLog}
+                        className="flex-1 rounded-2xl bg-emerald-500 px-4 py-3 font-medium text-white transition hover:bg-emerald-400"
+                      >
+                        Save log
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </motion.section>
 

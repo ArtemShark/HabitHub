@@ -13,6 +13,7 @@ import {
   Sparkles,
   CheckCircle2,
 } from "lucide-react";
+import { apiFetch } from "../auxiliary/apiFetch";
 
 const formVariants: Variants = {
   hidden: { opacity: 0, y: 24 },
@@ -71,8 +72,8 @@ export default function HabitHubLoginPage() {
         console.error("Login failed:", message);
         throw new Error("Invalid credentials");
       }
+    );
 
-      const data = await response.json();
 
       if (rememberMe) {
         sessionStorage.removeItem("token");
@@ -91,11 +92,6 @@ export default function HabitHubLoginPage() {
       );
 
       router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
   }
 
   return (

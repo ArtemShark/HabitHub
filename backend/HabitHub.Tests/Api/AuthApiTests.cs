@@ -29,7 +29,7 @@ public class AuthApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<AuthResponse>();
+        var body = await response.Content.ReadFromJsonAsync<AuthResponse>(TestHelper.JsonOptions);
         Assert.NotNull(body);
         Assert.Equal(request.Username, body!.Username);
         Assert.NotEmpty(body.Token);
@@ -83,7 +83,7 @@ public class AuthApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<AuthResponse>();
+        var body = await response.Content.ReadFromJsonAsync<AuthResponse>(TestHelper.JsonOptions);
         Assert.NotNull(body);
         Assert.Equal("loginuser", body!.Username);
         Assert.NotEmpty(body.Token);
@@ -134,7 +134,7 @@ public class AuthApiTests : IClassFixture<CustomWebApplicationFactory>
             Password = "Password123!"
         });
 
-        var registerBody = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>();
+        var registerBody = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(TestHelper.JsonOptions);
 
         var loginResponse = await _client.PostAsJsonAsync("/api/auth/login", new LoginRequest
         {
@@ -142,7 +142,7 @@ public class AuthApiTests : IClassFixture<CustomWebApplicationFactory>
             Password = "Password123!"
         });
 
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<AuthResponse>();
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<AuthResponse>(TestHelper.JsonOptions);
 
         Assert.Equal(registerBody!.UserId, loginBody!.UserId);
     }

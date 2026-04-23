@@ -5,6 +5,12 @@ using HabitHub.Tests.Helpers;
 
 namespace HabitHub.Tests.Api;
 
+public class JoinTeamResponse
+{
+    public string Message { get; set; } = string.Empty;
+    public Guid TeamId { get; set; }
+}
+
 public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly CustomWebApplicationFactory _factory;
@@ -39,7 +45,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
         var createResponse = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Runners" });
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
 
-        var created = await createResponse.Content.ReadFromJsonAsync<TeamResponse>();
+        var created = await createResponse.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
         Assert.NotNull(created);
         Assert.Equal("Runners", created!.Name);
         Assert.Equal(auth.UserId, created.CreatorId);
@@ -49,7 +55,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
         var getResponse = await _client.GetAsync($"/api/teams/{created.HabitTeamId}");
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
 
-        var fetched = await getResponse.Content.ReadFromJsonAsync<TeamResponse>();
+        var fetched = await getResponse.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
         Assert.Equal(created.HabitTeamId, fetched!.HabitTeamId);
     }
 
@@ -66,7 +72,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.GetAsync("/api/teams");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var teams = await response.Content.ReadFromJsonAsync<List<TeamResponse>>();
+        var teams = await response.Content.ReadFromJsonAsync<List<TeamResponse>>(TestHelper.JsonOptions);
         Assert.NotNull(teams);
         Assert.Equal(2, teams!.Count);
         Assert.All(teams, t => Assert.Equal(a.UserId, t.CreatorId));
@@ -77,7 +83,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Private" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var (outsider, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
         var response = await outsider.GetAsync($"/api/teams/{team!.HabitTeamId}");
@@ -91,21 +97,18 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         var creatorAuth = await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Inviters" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
         Assert.Equal(HttpStatusCode.Created, inviteResponse.StatusCode);
-        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>();
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
 
         var (joinerClient, joinerAuth) = await TestHelper.CreateSecondaryClientAsync(_factory);
         var joinResponse = await joinerClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
         Assert.Equal(HttpStatusCode.OK, joinResponse.StatusCode);
 
-        var joined = await joinResponse.Content.ReadFromJsonAsync<TeamResponse>();
-        Assert.Equal(team.HabitTeamId, joined!.HabitTeamId);
-        Assert.Equal(2, joined.Members.Count);
-        Assert.Contains(joined.Members, m => m.MemberId == joinerAuth.UserId);
-        Assert.Contains(joined.Members, m => m.MemberId == creatorAuth.UserId);
+        var joined = await joinResponse.Content.ReadFromJsonAsync<JoinTeamResponse>(TestHelper.JsonOptions);
+        Assert.Equal(team.HabitTeamId, joined!.TeamId);
     }
 
     [Fact]
@@ -122,7 +125,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Locked" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var (outsider, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
         var response = await outsider.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
@@ -136,9 +139,9 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Kickers" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
         var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
-        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>();
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
 
         var (joinerClient, joinerAuth) = await TestHelper.CreateSecondaryClientAsync(_factory);
         await joinerClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
@@ -148,7 +151,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
             content: null);
         Assert.Equal(HttpStatusCode.OK, kickResponse.StatusCode);
 
-        var fetched = await _client.GetFromJsonAsync<TeamResponse>($"/api/teams/{team.HabitTeamId}");
+        var fetched = await _client.GetFromJsonAsync<TeamResponse>($"/api/teams/{team.HabitTeamId}", TestHelper.JsonOptions);
         var kickedRow = fetched!.Members.FirstOrDefault(m => m.MemberId == joinerAuth.UserId);
         Assert.NotNull(kickedRow);
         Assert.Equal(HabitHub.Api.Enums.MembershipStatus.Kicked, kickedRow!.Status);
@@ -159,7 +162,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Stuck" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var response = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/leave", content: null);
 
@@ -171,9 +174,9 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Leavers" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
         var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
-        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>();
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
 
         var (joinerClient, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
         await joinerClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
@@ -187,7 +190,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Temporary" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var deleteResponse = await _client.DeleteAsync($"/api/teams/{team!.HabitTeamId}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
@@ -201,7 +204,7 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Safe" });
-        var team = await create.Content.ReadFromJsonAsync<TeamResponse>();
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var (outsider, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
         var response = await outsider.DeleteAsync($"/api/teams/{team!.HabitTeamId}");

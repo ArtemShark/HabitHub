@@ -17,6 +17,7 @@ import {
   Trash2,
   UserMinus,
   Target,
+  MessageCircle,
 } from "lucide-react";
 import {
   Habit,
@@ -25,6 +26,8 @@ import {
   HabitType,
 } from "../dto/Habit";
 import { mapHabit } from "../auxiliary/mapHabit";
+import { apiFetch } from "../auxiliary/apiFetch";
+import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
 
 type TeamMember = {
   memberId?: string;
@@ -71,50 +74,6 @@ const itemVariants: Variants = {
   },
 };
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token") || sessionStorage.getItem("token");
-}
-
-function parseJwt(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
-
-function getCurrentUserId(): string | null {
-  const token = getToken();
-  if (!token) return null;
-
-  const payload = parseJwt(token);
-  if (!payload) return null;
-
-  const keys = [
-    "nameid",
-    "sub",
-    "userId",
-    "userid",
-    "id",
-    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
-  ];
-
-  for (const key of keys) {
-    const value = payload[key];
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
 function getMemberId(member: TeamMember): string {
   return member.memberId ?? member.id ?? "";
 }
@@ -127,44 +86,6 @@ function getMemberName(member: TeamMember): string {
     member.email ??
     "Unknown member"
   );
-}
-
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getToken();
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
-
-    try {
-      const json = await response.json();
-      message = json?.message || json?.title || message;
-    } catch {
-      try {
-        const text = await response.text();
-        if (text) message = text;
-      } catch {
-        //
-      }
-    }
-
-    throw new Error(message);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
 }
 
 async function fetchTeams(): Promise<TeamResponse[]> {
@@ -651,6 +572,10 @@ export default function TeamsPage() {
       setDeleting(false);
     }
   }
+
+  const openChat = (teamId: string) => {
+    window.open(`/teams/${teamId}/chat`, "_blank");
+  };
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#07090F] px-4 py-6 text-white sm:px-6 md:px-8 md:py-10">
@@ -1174,6 +1099,18 @@ export default function TeamsPage() {
                           </AnimatePresence>
                         </div>
                       </div>
+
+
+                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+                      <button
+                        onClick={() => openChat(selectedTeam.habitTeamId)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400"
+                      >
+                        <MessageCircle size={16} />
+                        Chat
+                      </button>
+                    </div>
+
 
                       <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
                         <div className="mb-4">

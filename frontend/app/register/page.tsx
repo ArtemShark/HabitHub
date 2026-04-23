@@ -14,6 +14,7 @@ import {
   Sparkles,
   CheckCircle2,
 } from "lucide-react";
+import { apiFetch } from "../auxiliary/apiFetch";
 
 const formVariants: Variants = {
   hidden: { opacity: 0, y: 24 },
@@ -62,39 +63,22 @@ export default function RegisterPage() {
       setLoading(false);
       return;
     }
-
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/register`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email,
-            password,
-            Username: username,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Registration failed");
+    
+    const data = await apiFetch<{ token: string; id: string; username: string }>(
+      "/api/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          password,
+          Username: username,
+        }),
       }
+    );
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data));
 
-      const data = await response.json();
-
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data));
-
-      router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
+    router.push("/dashboard");
   }
 
   return (
