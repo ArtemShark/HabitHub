@@ -1,5 +1,8 @@
 export type HabitStatus = "active" | "archived";
 export type HabitType = "binary" | "value";
+export type EntryStatus = "Logged" | "Pending" | "Skipped";
+
+//  habitType: number | string;
 
 export type HabitResponseDto = {
   habitId: string;
@@ -7,16 +10,16 @@ export type HabitResponseDto = {
   creatorId: string;
   name: string;
   goal?: string | null;
-  habitState: number | string;
+  habitState: HabitStatus;
   expiryDate?: string | null;
-  habitType: number | string;
+  habitType: HabitType;
   unit?: string | null;
 };
 
 export type UpdateHabitRequestDto = {
   name?: string;
   goal?: string | null;
-  habitType?: number;
+  habitType?: HabitType;
   expiryDate?: string | null;
   unit?: string | null;
 };
@@ -40,3 +43,20 @@ export type HabitFormData = {
   unit: string;
   endDate: string;
 };
+
+export type HabitEntryResponse = {
+  habitEntryId: string;
+  habitId: string;
+  memberId: string;
+  value?: number;
+  status: number | string;
+  notes: string;
+  date: string;
+};
+
+
+export type HabitEntryRequest = {
+  value?: number;
+  status: EntryStatus;
+  notes: string;
+}
