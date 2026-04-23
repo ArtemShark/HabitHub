@@ -39,12 +39,6 @@ const sessions: Session[] = [
   { id: 3, device: "Tablet", location: "Krakow, Poland" },
 ];
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token") || sessionStorage.getItem("token");
-}
-
-
 async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
   const dtos = await apiFetch<HabitResponseDto[]>(`/api/habits?memberId=${memberId}`, {
     method: "GET",
@@ -52,13 +46,17 @@ async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
   return dtos.map(mapHabit);
 }
 
+async function fetchEntriesForHabit(habitId: string): Promise<HabitEntryResponse[]> {
+  return apiFetch<HabitEntryResponse[]>(`/api/habits/${habitId}/entries`, {
+    method: "GET",
+  });
+}
 
-const progressData = [
-  { value: 82, color: "#4F46E5", label: "Habits" },
-  { value: 68, color: "#F43F5E", label: "Team Progress" },
-  { value: 54, color: "#22D3EE", label: "Consistency" },
-  { value: 41, color: "#FBBF24", label: "Goals" },
-];
+type ProgressRing = {
+  value: number;
+  color: string;
+  label: string;
+};
 
 const containerVariants: Variants = {
   hidden: {},
@@ -245,9 +243,15 @@ function Card({
   );
 }
 
-function MultiRingProgress() {
+function MultiRingProgress({ data, overall }: { data: ProgressRing[]; overall: number }) {
   const size = 260;
   const center = size / 2;
+
+  const overallLabel =
+    overall >= 75 ? "Strong momentum" :
+    overall >= 50 ? "Good progress" :
+    overall >= 25 ? "Getting started" :
+    "No data yet";
 
   return (
     <div className="relative flex flex-col items-center justify-center">
@@ -259,7 +263,7 @@ function MultiRingProgress() {
         viewBox={`0 0 ${size} ${size}`}
         className="relative"
       >
-        {progressData.map((ring, index) => {
+        {data.map((ring, index) => {
           const radius = 84 - index * 18;
           const circumference = 2 * Math.PI * radius;
           const dashOffset = circumference * (1 - ring.value / 100);
@@ -296,8 +300,8 @@ function MultiRingProgress() {
 
       <div className="absolute text-center">
         <p className="text-xs uppercase tracking-[0.2em] text-white/45">Overall</p>
-        <p className="mt-1 text-3xl font-semibold text-white md:text-4xl">82%</p>
-        <p className="mt-1 text-sm text-white/55">Strong momentum</p>
+        <p className="mt-1 text-3xl font-semibold text-white md:text-4xl">{overall}%</p>
+        <p className="mt-1 text-sm text-white/55">{overallLabel}</p>
       </div>
     </div>
   );
@@ -308,6 +312,7 @@ export default function HomePage() {
   const [habitsLoading, setHabitsLoading] = useState(true);
   const [habitsError, setHabitsError] = useState("");
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [allEntries, setAllEntries] = useState<HabitEntryResponse[]>([]);
   const [selectedHabit, setSelectedHabit] = useState<(typeof todaysGoals)[number] | null>(null);
   const [logValue, setLogValue] = useState("");
   const [logNote, setLogNote] = useState("");
@@ -337,24 +342,30 @@ export default function HomePage() {
 
         const entriesPerHabit = await Promise.all(
           data.map(async (habit) => {
-            const entries = await apiFetch<HabitEntryResponse[]>(
-              `/api/habits/${habit.id}/entries?date=${today}`,
-              { method: "GET" }
-            );
+            const [todayEntries, allHabitEntries] = await Promise.all([
+              apiFetch<HabitEntryResponse[]>(
+                `/api/habits/${habit.id}/entries?date=${today}`,
+                { method: "GET" }
+              ),
+              fetchEntriesForHabit(habit.id),
+            ]);
 
-            return { habitId: habit.id, entries };
+            return { habitId: habit.id, todayEntries, allHabitEntries };
           })
         );
 
         const nextCompletedIds = new Set<string>();
+        const collectedEntries: HabitEntryResponse[] = [];
 
-        for (const { habitId, entries } of entriesPerHabit) {
-          if (entries.some((entry) => entry.status === "Logged")) {
+        for (const { habitId, todayEntries, allHabitEntries } of entriesPerHabit) {
+          if (todayEntries.some((entry) => entry.status === "Logged")) {
             nextCompletedIds.add(habitId);
           }
+          collectedEntries.push(...allHabitEntries);
         }
 
         setCompletedIds(nextCompletedIds);
+        setAllEntries(collectedEntries);
 
         hasFetchedRef.current = true;
       } catch (err) {
@@ -387,6 +398,56 @@ export default function HomePage() {
       return true;
     });
   }, [habits]);
+
+  const progressData = useMemo<ProgressRing[]>(() => {
+    const goalCount = todaysGoals.length;
+    const completedCount = todaysGoals.filter((g) => completedIds.has(g.id)).length;
+    const todayPercent = goalCount > 0
+      ? Math.round((completedCount / goalCount) * 100)
+      : 0;
+
+    const totalEntries = allEntries.length;
+    const loggedCount = allEntries.filter(
+      (e) => e.status === "Logged" || e.status === 0
+    ).length;
+    const completionPercent = totalEntries > 0
+      ? Math.round((loggedCount / totalEntries) * 100)
+      : 0;
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const recentlyLoggedHabitIds = new Set(
+      allEntries
+        .filter(
+          (e) =>
+            (e.status === "Logged" || e.status === 0) &&
+            new Date(e.date) >= sevenDaysAgo
+        )
+        .map((e) => e.habitId)
+    );
+
+    const activeHabits = habits.filter((h) => h.status === "active");
+    const coveredCount = activeHabits.filter((h) =>
+      recentlyLoggedHabitIds.has(h.id)
+    ).length;
+    const coveragePercent = activeHabits.length > 0
+      ? Math.round((coveredCount / activeHabits.length) * 100)
+      : 0;
+
+    return [
+      { value: todayPercent, color: "#4F46E5", label: "Today's Progress" },
+      { value: completionPercent, color: "#F43F5E", label: "Completion Rate" },
+      { value: coveragePercent, color: "#22D3EE", label: "Habit Coverage" },
+    ];
+  }, [habits, allEntries, todaysGoals, completedIds]);
+
+  const overallPercent = useMemo(() => {
+    if (progressData.length === 0) return 0;
+    const sum = progressData.reduce((acc, r) => acc + r.value, 0);
+    return Math.round(sum / progressData.length);
+  }, [progressData]);
 
   const toggleGoal = (habitId: string) => {
     setCompletedIds((prev) => {
@@ -548,9 +609,9 @@ export default function HomePage() {
 
             <Card className="min-h-[320px]">
               <div className="flex h-full flex-col items-center justify-center gap-6">
-                <MultiRingProgress />
+                <MultiRingProgress data={progressData} overall={overallPercent} />
 
-                <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {progressData.map((item) => (
                     <motion.div
                       key={item.label}
