@@ -1,6 +1,7 @@
 using HabitHub.Api.Contracts.Habits;
 using HabitHub.Api.Data;
 using HabitHub.Api.Enums;
+using HabitHub.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -185,5 +186,113 @@ public class HabitsController : ControllerBase
             .ToListAsync();
 
         return Ok(habits);
+    }
+
+    [HttpPost]
+    [Route("{habitId:guid}/entries")]
+    public async Task<ActionResult<LogHabitResponse>> LogHabit([FromRoute] Guid habitId, [FromBody] LogHabitRequest request)
+    {
+        var userId = GetCurrentUserId.GetUserId(User);
+        if (userId == null)
+            return Unauthorized();
+
+        var habit = await _context.Habits
+            .Include(h => h.Team)
+                .ThenInclude(t => t.Memberships)
+            .FirstOrDefaultAsync(h => h.HabitId == habitId);
+        
+
+        if (habit == null)
+            return NotFound("Habit not found");
+        
+        if (habit.HabitState == HabitState.Archived)
+            return Conflict("habit-archived");
+
+        if (habit.HabitState == HabitState.Closed)
+            return Conflict("habit-closed");
+
+        var today = DateTime.UtcNow.Date;
+
+        var exists = await _context.HabitEntries.AnyAsync(e =>
+            e.HabitId == habitId &&
+            e.MemberId == userId.Value &&
+            e.Date.Date == today);
+        
+        if (habit.HabitType == HabitType.Quantitative && request.Value == null)
+            return BadRequest("Value required for quantitative habit");
+
+        if (habit.HabitType == HabitType.Binary && request.Value != null)
+            return BadRequest("Binary habit should not have value");
+
+        if (exists)
+            return Conflict("log-already-exists");
+
+        if (!habit.Team.Memberships.Any(m =>
+                m.MemberId == userId.Value &&
+                m.Status == MembershipStatus.Active))
+        {
+            return Forbid();
+        }
+
+        var habitEntry = new HabitEntry
+        {
+            HabitEntryId = Guid.NewGuid(),
+            HabitId = habitId,
+            MemberId = userId.Value,
+            Status = request.Status,
+            Value = request.Value,
+            Notes = request.Notes,
+            Date = DateTime.UtcNow
+        };
+
+        _context.HabitEntries.Add(habitEntry);
+        await _context.SaveChangesAsync();
+
+        var response = new LogHabitResponse
+        {
+            HabitEntryId = habitEntry.HabitEntryId,
+            HabitId = habitEntry.HabitId,
+            MemberId = habitEntry.MemberId,
+            Status = habitEntry.Status,
+            Value = habitEntry.Value,
+            Notes = habitEntry.Notes,
+            Date = habitEntry.Date
+        };
+
+        return CreatedAtAction(nameof(GetHabitEntries), new { habitId }, response);
+    }
+
+    [HttpGet("{habitId:guid}/entries")]
+    public async Task<ActionResult<List<LogHabitResponse>>> GetHabitEntries([FromRoute] Guid habitId)
+    {
+        var userId = GetCurrentUserId.GetUserId(User);
+        if (userId == null)
+            return Unauthorized();
+
+        var habit = await _context.Habits
+            .Include(h => h.Team)
+            .FirstOrDefaultAsync(h => h.HabitId == habitId);
+
+        if (habit == null)
+            return NotFound("Habit not found");
+
+        if (!habit.Team.Memberships.Any(m => m.MemberId == userId.Value))
+            return Forbid();
+
+        var entries = await _context.HabitEntries
+            .Where(e => e.HabitId == habitId)
+            .Select(e => new LogHabitResponse
+            {
+                HabitEntryId = e.HabitEntryId,
+                HabitId = e.HabitId,
+                MemberId = e.MemberId,
+                Status = e.Status,
+                Value = e.Value,
+                Notes = e.Notes,
+                Date = e.Date
+            })
+            .ToListAsync();
+
+        return Ok(entries);
     }
 }
