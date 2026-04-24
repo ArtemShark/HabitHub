@@ -2,8 +2,11 @@
 using System.Net.Http.Json;
 using HabitHub.Api.Contracts.Habits;
 using HabitHub.Api.Contracts.Team;
+using HabitHub.Api.Data;
 using HabitHub.Api.Enums;
+using HabitHub.Api.Models;
 using HabitHub.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HabitHub.Tests.Api;
 
@@ -27,9 +30,74 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         return (await response.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions))!;
     }
 
+    private async Task<HabitResponse> CreateHabitAsync(Guid teamId, string name, string goal = "Some goal", HabitType type = HabitType.Binary, string? unit = null)
+    {
+        var response = await _client.PostAsJsonAsync(
+            $"/api/teams/{teamId}/habits",
+            new CreateHabitRequest
+            {
+                Name = name,
+                Goal = goal,
+                HabitType = type,
+                Unit = unit,
+                ExpiryDate = DateTime.UtcNow.AddDays(30)
+            });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<HabitResponse>(TestHelper.JsonOptions))!;
+    }
 
     [Fact]
-    public async Task GetHabits_WithoutToken_ReturnsUnauthorized()
+    public async Task GetHabitsForMember_WithoutToken_ReturnsUnauthorized()
+    {
+        var response = await _client.GetAsync($"/api/habits?memberId={Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetHabitsForMember_ForOtherMember_ReturnsForbidden()
+    {
+        var auth = await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var other = Guid.NewGuid();
+
+        var response = await _client.GetAsync($"/api/habits?memberId={other}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _ = auth;
+    }
+
+    [Fact]
+    public async Task GetHabitsForMember_ReturnsHabitsAcrossTeamsIAmIn()
+    {
+        var myAuth = await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var myTeam = await CreateTeamAsync(name: "Mine");
+        var myHabit = await CreateHabitAsync(myTeam.HabitTeamId, "Mine habit");
+
+        var (creator2Client, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
+        var otherTeam = await CreateTeamAsync(creator2Client, "Shared team");
+        var inviteResponse = await creator2Client.PostAsync($"/api/teams/{otherTeam.HabitTeamId}/invite-codes", content: null);
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
+        await _client.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
+        await creator2Client.PostAsJsonAsync(
+            $"/api/teams/{otherTeam.HabitTeamId}/habits",
+            new CreateHabitRequest
+            {
+                Name = "Shared habit",
+                Goal = "Do it",
+                HabitType = HabitType.Binary,
+                ExpiryDate = DateTime.UtcNow.AddDays(10)
+            });
+
+        var response = await _client.GetAsync($"/api/habits?memberId={myAuth.UserId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var habits = await response.Content.ReadFromJsonAsync<List<HabitResponse>>(TestHelper.JsonOptions);
+        Assert.NotNull(habits);
+        Assert.Contains(habits!, h => h.HabitId == myHabit.HabitId);
+        Assert.Contains(habits!, h => h.Name == "Shared habit");
+    }
+
+    [Fact]
+    public async Task GetTeamHabits_WithoutToken_ReturnsUnauthorized()
     {
         var response = await _client.GetAsync($"/api/teams/{Guid.NewGuid()}/habits");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -49,7 +117,6 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
             });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
-
 
     [Theory]
     [InlineData(HabitType.Binary, null)]
@@ -150,7 +217,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
     [InlineData(null, 3)]
     [InlineData(HabitState.Active, 1)]
     [InlineData(HabitState.Archived, 2)]
-    public async Task GetHabits_WithStateFilter_ReturnsExpectedCount(HabitState? filter, int expected)
+    public async Task GetTeamHabits_WithStateFilter_ReturnsExpectedCount(HabitState? filter, int expected)
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var team = await CreateTeamAsync();
@@ -179,7 +246,7 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetHabits_AsNonMember_ReturnsForbidden()
+    public async Task GetTeamHabits_AsNonMember_ReturnsForbidden()
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
         var team = await CreateTeamAsync();
@@ -189,7 +256,6 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
-
 
     [Fact]
     public async Task UpdateHabit_PartialUpdate_MergesFields()
@@ -279,21 +345,172 @@ public class HabitsApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    private async Task<HabitResponse> CreateHabitAsync(
-        Guid teamId,
-        string name,
-        string goal = "Some goal")
+    [Fact]
+    public async Task LogHabit_WithoutToken_ReturnsUnauthorized()
     {
-        var response = await _client.PostAsJsonAsync(
-            $"/api/teams/{teamId}/habits",
-            new CreateHabitRequest
-            {
-                Name = name,
-                Goal = goal,
-                HabitType = HabitType.Binary,
-                ExpiryDate = DateTime.UtcNow.AddDays(30)
-            });
-        response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<HabitResponse>(TestHelper.JsonOptions))!;
+        var response = await _client.PostAsJsonAsync($"/api/habits/{Guid.NewGuid()}/entries", new LogHabitRequest
+        {
+            Status = EntryStatus.Logged,
+            Notes = "x"
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetHabitEntries_WithoutToken_ReturnsUnauthorized()
+    {
+        var response = await _client.GetAsync($"/api/habits/{Guid.NewGuid()}/entries");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task LogHabit_HappyPath_ReturnsCreatedAndEntriesCanBeFetched()
+    {
+        var ownerAuth = await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var team = await CreateTeamAsync();
+        var inviteResponse = await _client.PostAsync($"/api/teams/{team.HabitTeamId}/invite-codes", content: null);
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
+
+        var (memberClient, memberAuth) = await TestHelper.CreateSecondaryClientAsync(_factory);
+        await memberClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
+        var habit = await CreateHabitAsync(team.HabitTeamId, "Track water", type: HabitType.Quantitative, unit: "cups");
+
+        var response = await memberClient.PostAsJsonAsync($"/api/habits/{habit.HabitId}/entries", new LogHabitRequest
+        {
+            Status = EntryStatus.Logged,
+            Value = 5f,
+            Notes = "Morning"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<LogHabitResponse>(TestHelper.JsonOptions);
+        Assert.NotNull(body);
+        Assert.Equal(habit.HabitId, body!.HabitId);
+        Assert.Equal(memberAuth.UserId, body.MemberId);
+        Assert.Equal(5f, body.Value);
+
+        var getResponse = await memberClient.GetAsync($"/api/habits/{habit.HabitId}/entries");
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+        var entries = await getResponse.Content.ReadFromJsonAsync<List<LogHabitResponse>>(TestHelper.JsonOptions);
+        Assert.Contains(entries!, e => e.HabitEntryId == body.HabitEntryId);
+        _ = ownerAuth;
+    }
+
+    [Fact]
+    public async Task LogHabit_QuantitativeWithoutValue_ReturnsBadRequest()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var team = await CreateTeamAsync();
+        var habit = await CreateHabitAsync(team.HabitTeamId, "Track water", type: HabitType.Quantitative, unit: "cups");
+
+        var response = await _client.PostAsJsonAsync($"/api/habits/{habit.HabitId}/entries", new LogHabitRequest
+        {
+            Status = EntryStatus.Logged,
+            Notes = "No value"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task LogHabit_BinaryWithValue_ReturnsBadRequest()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var team = await CreateTeamAsync();
+        var habit = await CreateHabitAsync(team.HabitTeamId, "Read", type: HabitType.Binary, unit: null);
+
+        var response = await _client.PostAsJsonAsync($"/api/habits/{habit.HabitId}/entries", new LogHabitRequest
+        {
+            Status = EntryStatus.Logged,
+            Notes = "Should fail",
+            Value = 1f
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task LogHabit_DuplicateSameDay_ReturnsConflict()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var team = await CreateTeamAsync();
+        var habit = await CreateHabitAsync(team.HabitTeamId, "Read", type: HabitType.Binary, unit: null);
+
+        await _client.PostAsJsonAsync($"/api/habits/{habit.HabitId}/entries", new LogHabitRequest
+        {
+            Status = EntryStatus.Logged,
+            Notes = "First"
+        });
+
+        var second = await _client.PostAsJsonAsync($"/api/habits/{habit.HabitId}/entries", new LogHabitRequest
+        {
+            Status = EntryStatus.Logged,
+            Notes = "Second"
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        var text = await second.Content.ReadAsStringAsync();
+        Assert.Contains("log-already-exists", text);
+    }
+
+    [Fact]
+    public async Task LogHabit_WhenArchived_ReturnsConflict()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var team = await CreateTeamAsync();
+        var habit = await CreateHabitAsync(team.HabitTeamId, "Archive me", type: HabitType.Binary, unit: null);
+        await _client.PostAsync($"/api/habits/{habit.HabitId}/archive", content: null);
+
+        var response = await _client.PostAsJsonAsync($"/api/habits/{habit.HabitId}/entries", new LogHabitRequest
+        {
+            Status = EntryStatus.Logged,
+            Notes = "Attempt"
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.Contains("habit-archived", text);
+    }
+
+    [Fact]
+    public async Task GetHabitEntries_WithDateFilter_ReturnsOnlyMatchingDay()
+    {
+        var auth = await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var team = await CreateTeamAsync();
+        var habit = await CreateHabitAsync(team.HabitTeamId, "Filtered", type: HabitType.Binary, unit: null);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.HabitEntries.AddRange(
+                new HabitEntry
+                {
+                    HabitEntryId = Guid.NewGuid(),
+                    HabitId = habit.HabitId,
+                    MemberId = auth.UserId,
+                    Status = EntryStatus.Logged,
+                    Notes = "match",
+                    Date = new DateTime(2026, 4, 24, 10, 0, 0, DateTimeKind.Utc)
+                },
+                new HabitEntry
+                {
+                    HabitEntryId = Guid.NewGuid(),
+                    HabitId = habit.HabitId,
+                    MemberId = auth.UserId,
+                    Status = EntryStatus.Skipped,
+                    Notes = "other",
+                    Date = new DateTime(2026, 4, 23, 10, 0, 0, DateTimeKind.Utc)
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/habits/{habit.HabitId}/entries?date=2026-04-24");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var entries = await response.Content.ReadFromJsonAsync<List<LogHabitResponse>>(TestHelper.JsonOptions);
+        Assert.NotNull(entries);
+        Assert.Single(entries!);
+        Assert.Equal("match", entries[0].Notes);
     }
 }
