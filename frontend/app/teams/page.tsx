@@ -24,6 +24,7 @@ import {
 import { mapHabit } from "../auxiliary/mapHabit";
 import { apiFetch } from "../auxiliary/apiFetch";
 import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
+import NotificationDropdown from "../notifications/NotificationDropdown";
 import PageHeader from "../components/PageHeader";
 import Card from "../components/Card";
 import SectionTitle from "../components/SectionTitle";

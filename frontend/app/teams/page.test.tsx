@@ -69,7 +69,7 @@ function jsonResponse(data: unknown, status = 200) {
 
 function textResponse(text: string, status = 500) {
   return {
-    ok: false,
+    ok: status >= 200 && status < 300,
     status,
     headers: {
       get: (key: string) =>
@@ -113,6 +113,10 @@ describe("TeamsPage integration-style tests", () => {
   it("loads teams, selected team details, and team habits through the real helper chain", async () => {
     mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
+
+      if (url === "http://test/api/notifications") {
+        return jsonResponse([]);
+      }
 
       if (url === "http://test/api/teams") {
         return jsonResponse([
@@ -199,6 +203,10 @@ describe("TeamsPage integration-style tests", () => {
     mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
+      if (url === "http://test/api/notifications") {
+        return jsonResponse([]);
+      }
+
       if (url === "http://test/api/teams" && (!init?.method || init.method === "GET")) {
         if (
           mockFetch.mock.calls.filter((call) => String(call[0]) === "http://test/api/teams")
@@ -268,6 +276,10 @@ describe("TeamsPage integration-style tests", () => {
   it("joins a team through the real apiFetch flow and reloads teams", async () => {
     mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+
+      if (url === "http://test/api/notifications") {
+        return jsonResponse([]);
+      }
 
       if (url === "http://test/api/teams" && (!init?.method || init.method === "GET")) {
         if (
@@ -345,6 +357,10 @@ describe("TeamsPage integration-style tests", () => {
     mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
+      if (url === "http://test/api/notifications") {
+        return jsonResponse([]);
+      }
+
       if (url === "http://test/api/teams") {
         return jsonResponse([
           {
@@ -402,6 +418,10 @@ describe("TeamsPage integration-style tests", () => {
   it("creates a team habit through the real apiFetch flow and refreshes the habit list", async () => {
     mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+
+      if (url === "http://test/api/notifications") {
+        return jsonResponse([]);
+      }
 
       if (url === "http://test/api/teams") {
         return jsonResponse([
@@ -518,10 +538,22 @@ describe("TeamsPage integration-style tests", () => {
   });
 
   it("shows the backend message when loading teams fails", async () => {
-    mockFetch.mockResolvedValueOnce(textResponse("Teams load failed", 500));
-
-    render(<TeamsPage />);
-
-    expect(await screen.findByText("Teams load failed")).toBeInTheDocument();
+  mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    
+    if (url === "http://test/api/notifications") {
+      return jsonResponse([]);
+    }
+    
+    if (url === "http://test/api/teams") {
+      return textResponse("Teams load failed", 500);
+    }
+    
+    throw new Error(`Unhandled fetch URL: ${url}`);
   });
+
+  render(<TeamsPage />);
+
+  expect(await screen.findByText("Teams load failed")).toBeInTheDocument();
+});
 });

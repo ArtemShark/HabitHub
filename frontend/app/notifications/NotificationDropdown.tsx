@@ -3,33 +3,80 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell } from "lucide-react";
+import { apiFetch } from "../auxiliary/apiFetch";
 
 type Notification = {
   notificationId: string;
   content: string;
-  createdAt: string;
+  createdAt?: string;
   read?: boolean;
 };
 
-export default function NotificationDropdown() {
+type NotificationDropdownProps = {
+  loadOnMount?: boolean;
+};
+
+export default function NotificationDropdown({
+  loadOnMount = process.env.NODE_ENV !== "test",
+}: NotificationDropdownProps = {}) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setNotifications([
-      {
-        notificationId: "1",
-        content: "Password changed successfully",
-        createdAt: "2025-06-21T22:30:00Z",
-      },
-      {
-        notificationId: "2",
-        content: "Email updated successfully",
-        createdAt: "2025-06-24T22:30:00Z",
-      },
-    ]);
+    let cancelled = false;
+
+    async function loadNotifications() {
+      try {
+        const data = await apiFetch<Notification[]>("/api/notifications");
+
+        if (!cancelled) {
+          setNotifications(data);
+        }
+      } catch (err) {
+        console.error(err);
+
+        if (!cancelled) {
+          setNotifications([]);
+        }
+      }
+    }
+
+    loadNotifications();
+
+    window.addEventListener("focus", loadNotifications);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadNotifications);
+    };
   }, []);
+
+  async function markAsRead(notificationId: string) {
+    const notification = notifications.find((n) => n.notificationId === notificationId);
+
+    if (!notification || notification.read) {
+      return;
+    }
+
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.notificationId === notificationId ? { ...n, read: true } : n
+      )
+    );
+
+    try {
+      await apiFetch<void>(`/api/notifications/${notificationId}/read`, {
+        method: "PUT",
+      });
+    } catch (err) {
+      console.error(err);
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.notificationId === notificationId ? { ...n, read: false } : n
+        )
+      );
+    }
+  }
 
 
   useEffect(() => {
@@ -86,23 +133,31 @@ export default function NotificationDropdown() {
                 notifications.map((n) => (
                   <div
                     key={n.notificationId}
-                    className={`flex items-center justify-between border-b border-white/5 px-4 py-3 transition hover:bg-white/5 ${
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => markAsRead(n.notificationId)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        markAsRead(n.notificationId);
+                      }
+                    }}
+                    className={`flex cursor-pointer items-center justify-between gap-4 border-b border-white/5 px-4 py-3 text-left transition hover:bg-white/5 ${
                       !n.read ? "bg-white/[0.03]" : ""
                     }`}
                   >
 
-                    <p className="flex-1 truncate text-[15px] font-medium text-white">
-                      {n.content}
-                    </p>
-
-                    <div className="ml-4 flex flex-col items-end shrink-0 text-xs leading-tight">
-                      <span className="text-white/40">
-                        {formatDateOnly(n.createdAt)}
-                      </span>
-                      <span className="text-white/30">
-                        {formatTimeOnly(n.createdAt)}
-                      </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-medium text-white">
+                        {n.content}
+                      </p>
                     </div>
+
+                    {n.createdAt && (
+                      <span className="shrink-0 text-right text-xs text-white/35">
+                        {formatNotificationTimestamp(n.createdAt)}
+                      </span>
+                    )}
                   </div>
                 ))
               )}
@@ -115,19 +170,16 @@ export default function NotificationDropdown() {
 }
 
 
-function formatDateOnly(date: string) {
+function formatNotificationTimestamp(date: string) {
   const d = new Date(date);
-  return d.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+  const datePart = d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
   });
-}
-
-function formatTimeOnly(date: string) {
-  const d = new Date(date);
-  return d.toLocaleTimeString(undefined, {
+  const timePart = d.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  return `${datePart}, ${timePart}`;
 }

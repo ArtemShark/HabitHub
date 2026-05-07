@@ -15,6 +15,8 @@ import { Habit, HabitFormData, HabitResponseDto, UpdateHabitRequestDto, HabitSta
 import { mapHabit } from "../auxiliary/mapHabit";
 import { apiFetch } from "../auxiliary/apiFetch";
 import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
+import NotificationDropdown from "../notifications/NotificationDropdown";
+
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import SectionTitle from "../components/SectionTitle";

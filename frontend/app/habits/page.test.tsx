@@ -39,6 +39,12 @@ jest.mock("framer-motion", () => {
   };
 });
 
+jest.mock("../notifications/NotificationDropdown", () => {
+  return function MockNotificationDropdown() {
+    return <div data-testid="notification-dropdown">Notifications</div>;
+  };
+});
+
 const HabitsPage = require("./page").default;
 
 const mockFetch = jest.fn();
@@ -65,7 +71,7 @@ function jsonResponse(data: unknown, status = 200) {
 
 function textResponse(text: string, status = 500) {
   return {
-    ok: false,
+    ok: status >= 200 && status < 300,
     status,
     headers: {
       get: (key: string) =>
@@ -88,32 +94,38 @@ describe("HabitsPage integration-style tests", () => {
   });
 
   it("loads habits through the real helper chain and shows active habits by default", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse([
-        {
-          habitId: "habit-1",
-          habitTeamId: "team-1",
-          creatorId: "user-123",
-          name: "Hydrate",
-          goal: "8",
-          habitState: "active",
-          expiryDate: "2026-12-31T00:00:00Z",
-          habitType: "quantitative",
-          unit: "cups",
-        },
-        {
-          habitId: "habit-2",
-          habitTeamId: "team-1",
-          creatorId: "user-123",
-          name: "Read Book",
-          goal: null,
-          habitState: "archived",
-          expiryDate: null,
-          habitType: "binary",
-          unit: null,
-        },
-      ])
-    );
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-1",
+            habitTeamId: "team-1",
+            creatorId: "user-123",
+            name: "Hydrate",
+            goal: "8",
+            habitState: "active",
+            expiryDate: "2026-12-31T00:00:00Z",
+            habitType: "quantitative",
+            unit: "cups",
+          },
+          {
+            habitId: "habit-2",
+            habitTeamId: "team-1",
+            creatorId: "user-123",
+            name: "Read Book",
+            goal: null,
+            habitState: "archived",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
 
     render(<HabitsPage />);
 
@@ -130,32 +142,38 @@ describe("HabitsPage integration-style tests", () => {
   });
 
   it("switches to archived habits using real mapped data", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse([
-        {
-          habitId: "habit-1",
-          habitTeamId: "team-1",
-          creatorId: "user-123",
-          name: "Hydrate",
-          goal: "8",
-          habitState: "active",
-          expiryDate: "2026-12-31T00:00:00Z",
-          habitType: "quantitative",
-          unit: "cups",
-        },
-        {
-          habitId: "habit-2",
-          habitTeamId: "team-1",
-          creatorId: "user-123",
-          name: "Read Book",
-          goal: null,
-          habitState: "archived",
-          expiryDate: null,
-          habitType: "binary",
-          unit: null,
-        },
-      ])
-    );
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-1",
+            habitTeamId: "team-1",
+            creatorId: "user-123",
+            name: "Hydrate",
+            goal: "8",
+            habitState: "active",
+            expiryDate: "2026-12-31T00:00:00Z",
+            habitType: "quantitative",
+            unit: "cups",
+          },
+          {
+            habitId: "habit-2",
+            habitTeamId: "team-1",
+            creatorId: "user-123",
+            name: "Read Book",
+            goal: null,
+            habitState: "archived",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
 
     render(<HabitsPage />);
 
@@ -333,7 +351,15 @@ describe("HabitsPage integration-style tests", () => {
   });
 
   it("shows the real apiFetch error when loading habits fails", async () => {
-    mockFetch.mockResolvedValueOnce(textResponse("Failed from server", 500));
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return textResponse("Failed from server", 500);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
 
     render(<HabitsPage />);
 

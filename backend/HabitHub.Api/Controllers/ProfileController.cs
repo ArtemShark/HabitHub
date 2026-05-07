@@ -34,22 +34,45 @@ public class ProfileController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(request.Email))
         {
-            user.Email = request.Email.Trim().ToLowerInvariant();
-            updated = true;
+            var email = request.Email.Trim().ToLowerInvariant();
+
+            if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
+            {
+                user.Email = email;
+                _context.Notifications.Add(new Notification
+                {
+                    NotificationId = Guid.NewGuid(),
+                    MemberId = user.MemberId,
+                    Content = "Email updated successfully."
+                });
+                updated = true;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.Username))
         {
-            user.Name = request.Username;
-            updated = true;
+            var username = request.Username.Trim();
+
+            if (!string.Equals(user.Name, username, StringComparison.Ordinal))
+            {
+                user.Name = username;
+                _context.Notifications.Add(new Notification
+                {
+                    NotificationId = Guid.NewGuid(),
+                    MemberId = user.MemberId,
+                    Content = "Username updated successfully."
+                });
+                updated = true;
+            }
         }
 
-        if (!updated){
+        if (!updated)
+        {
             return BadRequest("No changes provided");
         }
 
         await _context.SaveChangesAsync();
-        return Ok(new { message = "Profile updated successfully" });
+        return Ok(new { message = "Profile updated successfully." });
     }
 
     [HttpPut("password")]
@@ -80,6 +103,12 @@ public class ProfileController : ControllerBase
             return BadRequest("Current password is incorrect");
 
         user.PasswordHash = _passwordHasher.HashPassword(user, request.NewPassword);
+        _context.Notifications.Add(new Notification
+        {
+            NotificationId = Guid.NewGuid(),
+            MemberId = user.MemberId,
+            Content = "Password changed successfully"
+        });
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Password changed successfully" });

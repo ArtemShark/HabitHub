@@ -235,6 +235,12 @@ namespace HabitHub.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("MemberId")
                         .HasColumnType("uuid");
 
