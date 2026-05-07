@@ -15,4 +15,6 @@ public class Session
     public DateTime LastActiveAt { get; set; }
     public DateTime ExpiresAt { get; set; }
     public SessionState State { get; set; } = SessionState.Active;
+    public string Device { get; set; } = string.Empty;
+    public string IPAddress { get; set; } = string.Empty;
 }

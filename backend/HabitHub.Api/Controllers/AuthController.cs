@@ -2,6 +2,7 @@ namespace HabitHub.Api.Controllers;
 
 using HabitHub.Api.Contracts.Auth;
 using HabitHub.Api.Data;
+using HabitHub.Api.Enums;
 using HabitHub.Api.Models;
 using HabitHub.Api.Services;
 using Microsoft.AspNetCore.Identity;
@@ -46,11 +47,18 @@ public class AuthController : ControllerBase
 
         var (token, expiresAt) = _jwtTokenService.CreateToken(member);
 
+        var now = DateTime.UtcNow;
+
         var session = new Session
         {
             SessionId = Guid.NewGuid(),
             MemberId = member.MemberId,
-            ExpiresAt = expiresAt
+            CreatedAt = now,
+            LastActiveAt = now,
+            ExpiresAt = expiresAt,
+            IPAddress = GetIpAddress(),
+            Device = GetDevice(),
+            State = SessionState.Active
         };
 
         _dbContext.Sessions.Add(session);
@@ -80,12 +88,18 @@ public class AuthController : ControllerBase
             return BadRequest("Invalid email or password");
 
         var (token, expiresAt) = _jwtTokenService.CreateToken(member);
+        var now = DateTime.UtcNow;
 
         var session = new Session
         {
             SessionId = Guid.NewGuid(),
             MemberId = member.MemberId,
-            ExpiresAt = expiresAt
+            CreatedAt = now,
+            LastActiveAt = now,
+            ExpiresAt = expiresAt,
+            IPAddress = GetIpAddress(),
+            Device = GetDevice(),
+            State = SessionState.Active
         };
 
         _dbContext.Sessions.Add(session);
@@ -99,5 +113,24 @@ public class AuthController : ControllerBase
             Email = member.Email,
             SessionId = session.SessionId
         });
+    }
+
+    private string GetIpAddress()
+    {
+        var forwardedFor = HttpContext?.Request?.Headers["X-Forwarded-For"].FirstOrDefault();
+
+        if (!string.IsNullOrWhiteSpace(forwardedFor))
+        {
+            return forwardedFor.Split(',')[0].Trim();
+        }
+
+        return HttpContext?.Connection?.RemoteIpAddress?.ToString()
+            ?? "unknown";
+    }
+
+    private string GetDevice()
+    {
+        return HttpContext?.Request?.Headers.UserAgent.ToString()
+            ?? "Unknown device";
     }
 }
