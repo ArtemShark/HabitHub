@@ -15,9 +15,19 @@ jest.mock("next/link", () => {
   );
 });
 
+const successResponse = {
+  token: "fake-token",
+  userId: "user-1",
+  email: "test@example.com",
+  username: "ashley",
+  sessionId: "session-1",
+};
+
 describe("HabitHubLoginPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+
+    window.scrollTo = jest.fn();
 
     Object.defineProperty(window, "localStorage", {
       value: {
@@ -46,7 +56,7 @@ describe("HabitHubLoginPage", () => {
         headers: {
           get: () => "application/json",
         },
-        json: async () => ({ token: "fake-token", user: { id: "1" } }),
+        json: async () => successResponse,
       } as unknown as Response)
     );
   });
@@ -60,20 +70,7 @@ describe("HabitHubLoginPage", () => {
     expect(screen.getByRole("button", { name: /log in/i })).toBeInTheDocument();
   });
 
-  it("logs in successfully and stores token in sessionStorage when remember me is unchecked", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: {
-        get: () => "application/json",
-      },
-      json: async () => ({
-        token: "fake-token",
-        email: "test@example.com",
-        username: "ashley",
-      }),
-    });
-
+  it("logs in successfully and stores auth data in localStorage", async () => {
     render(<HabitHubLoginPage />);
 
     fireEvent.change(screen.getByLabelText(/email/i), {
@@ -89,31 +86,22 @@ describe("HabitHubLoginPage", () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    expect(sessionStorage.setItem).toHaveBeenCalledWith("token", "fake-token");
+    expect(localStorage.setItem).toHaveBeenCalledWith("token", "fake-token");
+    expect(localStorage.setItem).toHaveBeenCalledWith("sessionId", "session-1");
     expect(localStorage.setItem).toHaveBeenCalledWith(
       "user",
       JSON.stringify({
-        email: "test@example.com",
+        userId: "user-1",
         username: "ashley",
+        email: "test@example.com",
       })
     );
+
+    expect(sessionStorage.setItem).not.toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/dashboard");
   });
 
-  it("logs in successfully and stores token in localStorage when remember me is checked", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: {
-        get: () => "application/json",
-      },
-      json: async () => ({
-        token: "fake-token",
-        email: "test@example.com",
-        username: "ashley",
-      }),
-    });
-
+  it("logs in successfully when remember me is checked", async () => {
     render(<HabitHubLoginPage />);
 
     fireEvent.change(screen.getByLabelText(/email/i), {
@@ -129,6 +117,7 @@ describe("HabitHubLoginPage", () => {
       expect(localStorage.setItem).toHaveBeenCalledWith("token", "fake-token");
     });
 
+    expect(localStorage.setItem).toHaveBeenCalledWith("sessionId", "session-1");
     expect(pushMock).toHaveBeenCalledWith("/dashboard");
   });
 
@@ -189,11 +178,7 @@ describe("HabitHubLoginPage", () => {
       headers: {
         get: () => "application/json",
       },
-      json: async () => ({
-        token: "fake-token",
-        email: "test@example.com",
-        username: "ashley",
-      }),
+      json: async () => successResponse,
     });
 
     await waitFor(() => {

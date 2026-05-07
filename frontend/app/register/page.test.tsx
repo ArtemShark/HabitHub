@@ -36,7 +36,13 @@ describe("RegisterPage", () => {
             headers: {
                 get: () => "application/json",
             },
-            json: async () => ({ token: "fake-token", user: { id: "1" } }),
+            json: async () => ({
+              token: "register-token",
+              userId: "user-1",
+              username: "ashley",
+              email: "test@example.com",
+              sessionId: "session-1",
+            })
         } as unknown as Response)
         );
   });
@@ -78,8 +84,10 @@ describe("RegisterPage", () => {
   it("registers successfully and stores token + user", async () => {
     const responseData = {
       token: "register-token",
-      email: "test@example.com",
+      userId: "user-1",
       username: "ashley",
+      email: "test@example.com",
+      sessionId: "session-1",
     };
 
     (global.fetch as jest.Mock).mockResolvedValue({
@@ -113,11 +121,14 @@ describe("RegisterPage", () => {
     });
 
     expect(localStorage.setItem).toHaveBeenCalledWith("token", "register-token");
+    expect(localStorage.setItem).toHaveBeenCalledWith("sessionId", "session-1");
+
     expect(localStorage.setItem).toHaveBeenCalledWith(
       "user",
       JSON.stringify({
-        email: "test@example.com",
+        userId: "user-1",
         username: "ashley",
+        email: "test@example.com",
       })
     );
   });
@@ -195,9 +206,11 @@ describe("RegisterPage", () => {
       },
       json: async () => ({
         token: "register-token",
-        email: "test@example.com",
+        userId: "user-1",
         username: "ashley",
-      }),
+        email: "test@example.com",
+        sessionId: "session-1",
+      })
     });
 
     await waitFor(() => {

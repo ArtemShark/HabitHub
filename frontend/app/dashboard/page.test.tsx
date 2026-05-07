@@ -87,9 +87,14 @@ describe("DashboardPage integration-style tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockReset();
+
+    window.scrollTo = jest.fn();
+
     localStorage.clear();
     sessionStorage.clear();
+
     localStorage.setItem("token", createFakeJwt({ sub: "user-123" }));
+    localStorage.setItem("sessionId", "session-1");
   });
 
   it("loads habits through the real helper chain and renders mapped goal data", async () => {
@@ -97,6 +102,21 @@ describe("DashboardPage integration-style tests", () => {
 
     mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+
+      if (url === "http://test/api/sessions") {
+        return jsonResponse([
+          {
+            sessionId: "session-1",
+            memberId: "user-123",
+            device: "Chrome on Windows",
+            ipAddress: "127.0.0.1",
+            state: "Active",
+            createdAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          },
+        ]);
+      }
 
       if (url === "http://test/api/habits?memberId=user-123") {
         return jsonResponse([
@@ -179,7 +199,7 @@ describe("DashboardPage integration-style tests", () => {
     expect(screen.getByText("Habit Coverage")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(5);
+      expect(mockFetch).toHaveBeenCalledTimes(6);
     });
 
     const [firstUrl, firstOptions] = mockFetch.mock.calls[0];
@@ -196,6 +216,10 @@ describe("DashboardPage integration-style tests", () => {
 
     mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+
+      if (url === "http://test/api/sessions") {
+        return jsonResponse([]);
+      }
 
       if (url === "http://test/api/habits?memberId=user-123") {
         return jsonResponse([
@@ -256,10 +280,18 @@ describe("DashboardPage integration-style tests", () => {
     fireEvent.click(screen.getByText(/save log/i));
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(4);
+      expect(mockFetch).toHaveBeenCalledTimes(5);
     });
 
-    const [postUrl, postOptions] = mockFetch.mock.calls[3];
+    const postCall = mockFetch.mock.calls.find(
+      ([url, options]) =>
+        String(url) === "http://test/api/habits/habit-value/entries" &&
+        (options as RequestInit)?.method === "POST"
+    );
+
+    expect(postCall).toBeDefined();
+
+    const [postUrl, postOptions] = postCall!;
     expect(String(postUrl)).toBe("http://test/api/habits/habit-value/entries");
     expect((postOptions as RequestInit).method).toBe("POST");
     expect((postOptions as RequestInit).body).toBe(
@@ -284,6 +316,20 @@ describe("DashboardPage integration-style tests", () => {
   });
 
   it("shows user-id error when no token is available for the real getCurrentUserId flow", async () => {
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return textResponse("Server exploded", 500);
+      }
+
+      if (url === "http://test/api/sessions") {
+        return jsonResponse([]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
     localStorage.clear();
     sessionStorage.clear();
 

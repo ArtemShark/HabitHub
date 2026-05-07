@@ -82,10 +82,14 @@ describe("TeamsPage integration-style tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockReset();
+
+    window.scrollTo = jest.fn();
+
     localStorage.clear();
     sessionStorage.clear();
 
     localStorage.setItem("token", createFakeJwt({ sub: "creator-1" }));
+    localStorage.setItem("sessionId", "session-1");
 
     Object.defineProperty(window, "navigator", {
       value: {
