@@ -1,12 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence, type Variants } from "framer-motion";
-import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Bell,
-  Clock3,
-  Settings,
   Users,
   Plus,
   UserPlus,
@@ -28,6 +24,12 @@ import {
 import { mapHabit } from "../auxiliary/mapHabit";
 import { apiFetch } from "../auxiliary/apiFetch";
 import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
+import PageHeader from "../components/PageHeader";
+import Card from "../components/Card";
+import SectionTitle from "../components/SectionTitle";
+import StatPill from "../components/StatPill";
+import { itemVariants } from "../auxiliary/variants/itemVariant";
+import { containerVariants } from "../auxiliary/variants/containerVariants";
 
 type TeamMember = {
   memberId?: string;
@@ -51,28 +53,6 @@ type InviteCodeResponse = {
   habitTeamId: string;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-
-const containerVariants: Variants = {
-  hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.08,
-    },
-  },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 18 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.45,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-};
 
 function getMemberId(member: TeamMember): string {
   return member.memberId ?? member.id ?? "";
@@ -169,118 +149,6 @@ async function updateHabit(habitId: string, payload: UpdateHabitRequestDto): Pro
     body: JSON.stringify(payload),
   });
   return mapHabit(dto);
-}
-
-function NavButton({
-  href,
-  label,
-  active = false,
-}: {
-  href: string;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <Link href={href}>
-      <motion.div
-        whileHover={{ y: -2, scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        className={[
-          "group relative overflow-hidden rounded-2xl border px-5 py-2.5 text-sm font-medium backdrop-blur-md transition md:text-base",
-          active
-            ? "border-emerald-400/70 bg-emerald-400/10 text-white shadow-[0_0_24px_rgba(16,185,129,0.18)]"
-            : "border-white/15 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",
-        ].join(" ")}
-      >
-        <span className="relative z-10">{label}</span>
-        {active && (
-          <span className="absolute inset-x-4 bottom-1 h-[2px] rounded-full bg-emerald-400" />
-        )}
-      </motion.div>
-    </Link>
-  );
-}
-
-function IconButton({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link href={href}>
-      <motion.div
-        whileHover={{ y: -2, scale: 1.05 }}
-        whileTap={{ scale: 0.96 }}
-        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/5 text-white/80 backdrop-blur-md transition hover:border-white/25 hover:bg-white/10 hover:text-white md:h-12 md:w-12"
-      >
-        {children}
-      </motion.div>
-    </Link>
-  );
-}
-
-function Card({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={[
-        "relative overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl",
-        "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.10),transparent_35%)]",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
-
-function SectionTitle({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="mb-5 flex items-start gap-3">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/8 text-white/90">
-        {icon}
-      </div>
-      <div>
-        <h2 className="text-xl font-semibold text-white md:text-2xl">{title}</h2>
-        {subtitle && <p className="mt-1 text-sm text-white/50">{subtitle}</p>}
-      </div>
-    </div>
-  );
-}
-
-function StatPill({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <div className="flex items-center gap-2 text-white/60">
-        {icon}
-        <span className="text-xs uppercase tracking-[0.16em]">{label}</span>
-      </div>
-      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
-    </div>
-  );
 }
 
 export default function TeamsPage() {
@@ -588,40 +456,11 @@ export default function TeamsPage() {
         transition={{ duration: 0.55, ease: [0.25, 0.1, 0.25, 1] }}
         className="relative mx-auto max-w-7xl rounded-[36px] border border-white/10 bg-black/35 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:p-5 md:rounded-[42px] md:p-7"
       >
-        <header className="flex flex-col gap-5 border-b border-white/10 pb-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-emerald-300/70">
-                HabitHub
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">
-                Teams
-              </h1>
-              <p className="mt-2 text-sm text-white/50">
-                Create teams, invite members, manage collaboration, and add team habits.
-              </p>
-            </div>
-
-            <nav className="flex flex-wrap gap-3">
-              <NavButton href="/dashboard" label="Home" />
-              <NavButton href="/teams" label="Teams" active />
-              <NavButton href="/habits" label="Habits" />
-              <NavButton href="/progress" label="Progress" />
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-3 self-start lg:self-auto">
-            <IconButton href="/notifications">
-              <Bell className="h-5 w-5" />
-            </IconButton>
-            <IconButton href="/sessions">
-              <Clock3 className="h-5 w-5" />
-            </IconButton>
-            <IconButton href="/settings">
-              <Settings className="h-5 w-5" />
-            </IconButton>
-          </div>
-        </header>
+        <PageHeader
+          title="Teams"
+          subtitle="Create teams, invite members, manage collaboration, and add team habits."
+          activePage="teams"
+        />
 
         {(error || success) && (
           <div className="mt-6 space-y-3">
@@ -653,13 +492,9 @@ export default function TeamsPage() {
               />
 
               <div className="grid gap-4 sm:grid-cols-3">
-                <StatPill icon={<Users className="h-4 w-4" />} label="Teams" value={totalTeams} />
-                <StatPill icon={<Crown className="h-4 w-4" />} label="Owned" value={ownedTeams} />
-                <StatPill
-                  icon={<UserPlus className="h-4 w-4" />}
-                  label="Members"
-                  value={totalMembers}
-                />
+                <StatPill label="Teams" value={totalTeams} />
+                <StatPill label="Owned" value={ownedTeams} />
+                <StatPill label="Members" value={totalMembers}/>
               </div>
 
               <button

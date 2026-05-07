@@ -1,12 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence, type Variants } from "framer-motion";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Bell,
-  Clock3,
-  Settings,
   Pencil,
   Archive,
   Trash2,
@@ -14,34 +10,18 @@ import {
   CheckCircle2,
   CalendarDays,
   Target,
-  X,
-  ListTodo,
 } from "lucide-react";
-import { Habit, HabitFormData, HabitResponseDto, UpdateHabitRequestDto, HabitStatus, HabitType } from "../dto/Habit";
+import { Habit, HabitFormData, HabitResponseDto, UpdateHabitRequestDto, HabitStatus } from "../dto/Habit";
 import { mapHabit } from "../auxiliary/mapHabit";
 import { apiFetch } from "../auxiliary/apiFetch";
 import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
-
-const containerVariants: Variants = {
-  hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.08,
-    },
-  },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 18 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.45,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-};
+import Card from "../components/Card";
+import PageHeader from "../components/PageHeader";
+import SectionTitle from "../components/SectionTitle";
+import StatPill from "../components/StatPill";
+import HabitFormModal from "../components/HabitFormModal";
+import { itemVariants } from "../auxiliary/variants/itemVariant";
+import { containerVariants } from "../auxiliary/variants/containerVariants";
 
 
 async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
@@ -73,277 +53,6 @@ async function deleteHabit(habitId: string): Promise<void> {
   });
 }
 
-function NavButton({
-  href,
-  label,
-  active = false,
-}: {
-  href: string;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <Link href={href}>
-      <motion.div
-        whileHover={{ y: -2, scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        className={[
-          "group relative overflow-hidden rounded-2xl border px-5 py-2.5 text-sm font-medium backdrop-blur-md transition md:text-base",
-          active
-            ? "border-emerald-400/70 bg-emerald-400/10 text-white shadow-[0_0_24px_rgba(16,185,129,0.18)]"
-            : "border-white/15 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",
-        ].join(" ")}
-      >
-        <span className="relative z-10">{label}</span>
-        {active && (
-          <span className="absolute inset-x-4 bottom-1 h-[2px] rounded-full bg-emerald-400" />
-        )}
-      </motion.div>
-    </Link>
-  );
-}
-
-function IconButton({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link href={href}>
-      <motion.div
-        whileHover={{ y: -2, scale: 1.05 }}
-        whileTap={{ scale: 0.96 }}
-        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/5 text-white/80 backdrop-blur-md transition hover:border-white/25 hover:bg-white/10 hover:text-white md:h-12 md:w-12"
-      >
-        {children}
-      </motion.div>
-    </Link>
-  );
-}
-
-function Card({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={[
-        "relative overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl",
-        "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.10),transparent_35%)]",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
-
-function SectionTitle({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="mb-5 flex items-start gap-3">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/8 text-white/90">
-        {icon}
-      </div>
-      <div>
-        <h2 className="text-xl font-semibold text-white md:text-2xl">{title}</h2>
-        {subtitle && <p className="mt-1 text-sm text-white/50">{subtitle}</p>}
-      </div>
-    </div>
-  );
-}
-
-function StatPill({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <div className="flex items-center gap-2 text-white/60">
-        {icon}
-        <span className="text-xs uppercase tracking-[0.16em]">{label}</span>
-      </div>
-      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
-    </div>
-  );
-}
-
-function HabitFormModal({
-  open,
-  initialData,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean;
-  initialData: HabitFormData;
-  onClose: () => void;
-  onSubmit: (data: HabitFormData) => void;
-}) {
-  const [form, setForm] = useState<HabitFormData>(initialData);
-
-  React.useEffect(() => {
-    setForm(initialData);
-  }, [initialData]);
-
-  const isValueType = form.type === "quantitative";
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleClose = () => {
-    setForm(initialData);
-    onClose();
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(form);
-  };
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={handleClose}
-            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-          />
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94, y: 24 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            transition={{ duration: 0.25 }}
-            className="fixed left-1/2 top-1/2 z-50 w-[92%] max-w-2xl -translate-x-1/2 -translate-y-1/2"
-          >
-            <div className="rounded-[30px] border border-white/10 bg-[#0B1018]/95 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-2xl font-semibold text-white">Edit Habit</h3>
-                  <p className="mt-1 text-sm text-white/50">
-                    Update the habit details below.
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleClose}
-                  className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="grid gap-5 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <label className="mb-2 block text-sm text-white/65">Habit Name</label>
-                    <input
-                      name="name"
-                      value={form.name}
-                      onChange={handleChange}
-                      required
-                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-emerald-400/40"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm text-white/65">Habit Type</label>
-                    <select
-                      name="type"
-                      value={form.type}
-                      onChange={handleChange}
-                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
-                    >
-                      <option value="binary" className="bg-[#0B1018]">Binary</option>
-                      <option value="quantitative" className="bg-[#0B1018]">Quantitative</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm text-white/65">End Date</label>
-                    <input
-                      type="date"
-                      name="endDate"
-                      value={form.endDate}
-                      onChange={handleChange}
-                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
-                    />
-                  </div>
-
-                  {isValueType && (
-                    <>
-                      <div>
-                        <label className="mb-2 block text-sm text-white/65">Goal</label>
-                        <input
-                          type="number"
-                          name="goal"
-                          value={form.goal}
-                          onChange={handleChange}
-                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm text-white/65">Unit</label>
-                        <input
-                          name="unit"
-                          value={form.unit}
-                          onChange={handleChange}
-                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-emerald-400/40"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="submit"
-                    className="rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-black transition hover:scale-[1.01]"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
-}
 
 export default function HabitsPage() {
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -482,40 +191,11 @@ export default function HabitsPage() {
         transition={{ duration: 0.55, ease: [0.25, 0.1, 0.25, 1] }}
         className="relative mx-auto max-w-7xl rounded-[36px] border border-white/10 bg-black/35 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:p-5 md:rounded-[42px] md:p-7"
       >
-        <header className="flex flex-col gap-5 border-b border-white/10 pb-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-emerald-300/70">
-                HabitHub
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">
-                Habits
-              </h1>
-              <p className="mt-2 text-sm text-white/50">
-                Manage, update, archive, and track all team habits in one place.
-              </p>
-            </div>
-
-            <nav className="flex flex-wrap gap-3">
-              <NavButton href="/dashboard" label="Home" />
-              <NavButton href="/teams" label="Teams" />
-              <NavButton href="/habits" label="Habits" active />
-              <NavButton href="/progress" label="Progress" />
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-3 self-start lg:self-auto">
-            <IconButton href="/notifications">
-              <Bell className="h-5 w-5" />
-            </IconButton>
-            <IconButton href="/sessions">
-              <Clock3 className="h-5 w-5" />
-            </IconButton>
-            <IconButton href="/settings">
-              <Settings className="h-5 w-5" />
-            </IconButton>
-          </div>
-        </header>
+        <PageHeader
+          title="Habits"
+          subtitle="Manage, update, archive, and track all team habits in one place."
+          activePage="habits"
+        />
 
         {(error || success) && (
           <div className="mt-6 space-y-3">
@@ -547,9 +227,9 @@ export default function HabitsPage() {
               />
 
               <div className="grid gap-4 sm:grid-cols-3">
-                <StatPill icon={<CheckCircle2 className="h-4 w-4" />} label="Active" value={activeCount} />
-                <StatPill icon={<Archive className="h-4 w-4" />} label="Archived" value={archivedCount} />
-                <StatPill icon={<ListTodo className="h-4 w-4" />} label="Total" value={habits.length} />
+                <StatPill label="Active" value={activeCount} />
+                <StatPill label="Archived" value={archivedCount} />
+                <StatPill label="Total" value={habits.length} />
               </div>
 
               <button
