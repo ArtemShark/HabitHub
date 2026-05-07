@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   Clock3,
@@ -284,6 +285,7 @@ function StatPill({
 }
 
 export default function TeamsPage() {
+  const router = useRouter();
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<TeamResponse | null>(null);
@@ -574,7 +576,7 @@ export default function TeamsPage() {
   }
 
   const openChat = (teamId: string) => {
-    window.open(`/teams/${teamId}/chat`, "_blank");
+    router.push(`/teams/${teamId}/chat`);
   };
 
   return (
