@@ -44,6 +44,8 @@ type LoginResponse = {
   token: string;
   email: string;
   username: string;
+  userId: string;
+  sessionId: string;
 };
 
 export default function HabitHubLoginPage() {
@@ -62,29 +64,24 @@ export default function HabitHubLoginPage() {
     setError("");
 
     try {
-      const data = await apiFetch<{ token: string; email: string; username: string }>(
+      const data = await apiFetch<LoginResponse>(
         "/api/auth/login",
         {
           method: "POST",
           body: JSON.stringify({ email, password }),
+          headers: {
+            "Content-Type": "application/json",
+          },
         }
       );
 
-      if (rememberMe) {
-        sessionStorage.removeItem("token");
-        localStorage.setItem("token", data.token);
-      } else {
-        localStorage.removeItem("token");
-        sessionStorage.setItem("token", data.token);
-      }
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          email: data.email,
-          username: data.username,
-        })
-      );
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("sessionId", data.sessionId);
+      localStorage.setItem("user", JSON.stringify({
+        userId: data.userId,
+        username: data.username,
+        email: data.email,
+      }));
 
       router.push("/dashboard");
     } catch (err) {

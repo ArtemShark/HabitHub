@@ -65,7 +65,7 @@ export default function RegisterPage() {
     }
 
     try {
-      const data = await apiFetch<{ token: string; email: string; username: string }>(
+      const data = await apiFetch<{ token: string; email: string; username: string; userId: string; sessionId: string }>(
         "/api/auth/register",
         {
           method: "POST",
@@ -78,13 +78,12 @@ export default function RegisterPage() {
       );
 
       localStorage.setItem("token", data.token);
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          email: data.email,
-          username: data.username,
-        })
-      );
+      localStorage.setItem("sessionId", data.sessionId);
+      localStorage.setItem("user", JSON.stringify({
+        userId: data.userId,
+        username: data.username,
+        email: data.email,
+      }));
 
       router.push("/dashboard");
     } catch (err) {
