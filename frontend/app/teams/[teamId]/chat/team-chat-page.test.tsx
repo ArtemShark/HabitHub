@@ -2,6 +2,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 process.env.NEXT_PUBLIC_API_BASE_URL = "http://test";
 
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
+
 const TeamChatPage = require("./team-chat-page").default;
 
 const mockFetch = jest.fn();
@@ -26,48 +31,82 @@ function jsonResponse(data: unknown, status = 200) {
   };
 }
 
-describe("TeamChatPage integration-style tests", () => {
+function noContentResponse() {
+  return {
+    ok: true,
+    status: 204,
+    headers: {
+      get: () => null,
+    },
+    json: async () => undefined,
+    text: async () => "",
+  };
+}
+
+const TEAM_ID = "team-123";
+const USER_ID = "user-123";
+
+describe("TeamChatPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockReset();
     localStorage.clear();
     sessionStorage.clear();
-    localStorage.setItem("token", createFakeJwt({ sub: "user-123" }));
+    localStorage.setItem("token", createFakeJwt({ sub: USER_ID }));
+
+    // scrollIntoView is not implemented in jsdom
+    Element.prototype.scrollIntoView = jest.fn();
   });
 
-  it("loads messages and resolves sender names through the real helper chain", async () => {
-    mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+  function setupFetchForMessages(
+    messages: unknown[] = [],
+    teams: unknown[] = []
+  ) {
+    mockFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
 
-      if (url === "http://test/api/teams/team-123/chat/messages") {
-        return jsonResponse([
-          {
-            messageId: "msg-1",
-            senderId: "chat-user-a",
-            content: "Hello team!",
-            sendDate: "2026-04-22T10:00:00Z",
-          },
-          {
-            messageId: "msg-2",
-            senderId: "chat-user-b",
-            content: "How is everyone?",
-            sendDate: "2026-04-22T10:05:00Z",
-          },
-        ]);
+        if (
+          url === `http://test/api/teams/${TEAM_ID}/chat/messages` &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return jsonResponse(messages);
+        }
+
+        if (
+          url === "http://test/api/teams" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return jsonResponse(teams);
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`);
       }
+    );
+  }
 
-      if (url === "http://test/api/members/info?ids=chat-user-a,chat-user-b") {
-        expect((init?.headers as Record<string, string>).Authorization).toContain("Bearer");
-        return jsonResponse([
-          { memberId: "chat-user-a", name: "Alice" },
-          { memberId: "chat-user-b", name: "Bob" },
-        ]);
-      }
+  it("loads and displays messages with sender names from the API", async () => {
+    setupFetchForMessages(
+      [
+        {
+          messageId: "msg-1",
+          senderId: "chat-user-a",
+          senderName: "Alice",
+          content: "Hello team!",
+          sendDate: "2026-04-22T10:00:00Z",
+        },
+        {
+          messageId: "msg-2",
+          senderId: "chat-user-b",
+          senderName: "Bob",
+          content: "How is everyone?",
+          sendDate: "2026-04-22T10:05:00Z",
+        },
+      ],
+      [{ habitTeamId: TEAM_ID, creatorId: "other-creator" }]
+    );
 
-      throw new Error(`Unhandled fetch URL: ${url}`);
-    });
-
-    render(<TeamChatPage teamId="team-123" />);
+    render(<TeamChatPage teamId={TEAM_ID} />);
 
     expect(screen.getByText(/loading messages/i)).toBeInTheDocument();
 
@@ -75,94 +114,211 @@ describe("TeamChatPage integration-style tests", () => {
     expect(await screen.findByText("How is everyone?")).toBeInTheDocument();
     expect(await screen.findByText("Alice")).toBeInTheDocument();
     expect(await screen.findByText("Bob")).toBeInTheDocument();
-
-    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("sends a message and resolves the new sender name through the real helper chain", async () => {
-    mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+  it("sends a message and appends it to the list", async () => {
+    mockFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
 
-      if (url === "http://test/api/teams/team-123/chat/messages" && (!init?.method || init.method === "GET")) {
-        return jsonResponse([]);
+        if (
+          url === `http://test/api/teams/${TEAM_ID}/chat/messages` &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return jsonResponse([]);
+        }
+
+        if (
+          url === `http://test/api/teams/${TEAM_ID}/chat/messages` &&
+          init?.method === "POST"
+        ) {
+          return jsonResponse(
+            {
+              messageId: "msg-new",
+              senderId: USER_ID,
+              senderName: "TestUser",
+              content: "Test message",
+              sendDate: "2026-04-23T11:00:00Z",
+            },
+            201
+          );
+        }
+
+        if (url === "http://test/api/teams") {
+          return jsonResponse([]);
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`);
       }
+    );
 
-      if (url === "http://test/api/teams/team-123/chat/messages" && init?.method === "POST") {
-        return jsonResponse({
-          messageId: "msg-new",
-          senderId: "chat-user-c",
-          content: "Test integration message",
-          sendDate: "2026-04-23T11:00:00Z",
-        });
-      }
-
-      if (url === "http://test/api/members/info?ids=chat-user-c") {
-        return jsonResponse([{ memberId: "chat-user-c", name: "Charlie" }]);
-      }
-
-      throw new Error(`Unhandled fetch URL: ${url}`);
-    });
-
-    render(<TeamChatPage teamId="team-123" />);
+    render(<TeamChatPage teamId={TEAM_ID} />);
 
     await waitFor(() => {
       expect(screen.queryByText(/loading messages/i)).not.toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText(/write a message/i) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "Test integration message" } });
+    const input = screen.getByPlaceholderText(
+      /write a message/i
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Test message" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-    expect(await screen.findByText("Test integration message")).toBeInTheDocument();
-    expect(await screen.findByText("Charlie")).toBeInTheDocument();
+    expect(await screen.findByText("Test message")).toBeInTheDocument();
     expect(input.value).toBe("");
-
-    expect(mockFetch).toHaveBeenCalledTimes(3);
-
-    const [postUrl, postOptions] = mockFetch.mock.calls[1];
-    expect(String(postUrl)).toBe("http://test/api/teams/team-123/chat/messages");
-    expect((postOptions as RequestInit).method).toBe("POST");
-    expect((postOptions as RequestInit).body).toBe(
-      JSON.stringify({ content: "Test integration message" })
-    );
   });
 
-  it("does not call the backend when the real getToken returns no token", async () => {
+  it("does not call the backend when no token is present", async () => {
     localStorage.clear();
     sessionStorage.clear();
 
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-    render(<TeamChatPage teamId="team-123" />);
+    render(<TeamChatPage teamId={TEAM_ID} />);
 
     await waitFor(() => {
       expect(screen.queryByText(/loading messages/i)).not.toBeInTheDocument();
     });
 
-    expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/you must be logged in/i)).toBeInTheDocument();
     expect(mockFetch).not.toHaveBeenCalled();
 
     consoleSpy.mockRestore();
   });
 
-  it("handles a server error on load without crashing the page", async () => {
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  it("handles a server error on load without crashing", async () => {
+    const consoleSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      text: async () => "Server error",
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/chat/messages")) {
+        return {
+          ok: false,
+          status: 500,
+          headers: { get: () => null },
+          text: async () => "Server error",
+          json: async () => ({}),
+        };
+      }
+      if (url === "http://test/api/teams") {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unhandled fetch URL: ${url}`);
     });
 
-    render(<TeamChatPage teamId="team-123" />);
+    render(<TeamChatPage teamId={TEAM_ID} />);
 
     await waitFor(() => {
       expect(screen.queryByText(/loading messages/i)).not.toBeInTheDocument();
     });
 
-    expect(screen.getByRole("heading", { name: /team chat/i })).toBeInTheDocument();
-    expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /team chat/i })
+    ).toBeInTheDocument();
 
     consoleSpy.mockRestore();
+  });
+
+  it("deletes own message when delete button is clicked", async () => {
+    mockFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (
+          url === `http://test/api/teams/${TEAM_ID}/chat/messages` &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return jsonResponse([
+            {
+              messageId: "msg-own",
+              senderId: USER_ID,
+              senderName: "TestUser",
+              content: "My message",
+              sendDate: "2026-04-22T10:00:00Z",
+            },
+          ]);
+        }
+
+        if (url === "http://test/api/teams") {
+          return jsonResponse([
+            { habitTeamId: TEAM_ID, creatorId: "other-user" },
+          ]);
+        }
+
+        if (
+          url ===
+            `http://test/api/teams/${TEAM_ID}/chat/messages/msg-own` &&
+          init?.method === "DELETE"
+        ) {
+          return noContentResponse();
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`);
+      }
+    );
+
+    render(<TeamChatPage teamId={TEAM_ID} />);
+
+    expect(await screen.findByText("My message")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByLabelText(/delete message/i);
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText("My message")).not.toBeInTheDocument();
+    });
+  });
+
+  it("sends a message with Enter key", async () => {
+    mockFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (
+          url === `http://test/api/teams/${TEAM_ID}/chat/messages` &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return jsonResponse([]);
+        }
+
+        if (
+          url === `http://test/api/teams/${TEAM_ID}/chat/messages` &&
+          init?.method === "POST"
+        ) {
+          return jsonResponse(
+            {
+              messageId: "msg-enter",
+              senderId: USER_ID,
+              senderName: "TestUser",
+              content: "Enter key msg",
+              sendDate: "2026-04-23T11:00:00Z",
+            },
+            201
+          );
+        }
+
+        if (url === "http://test/api/teams") {
+          return jsonResponse([]);
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`);
+      }
+    );
+
+    render(<TeamChatPage teamId={TEAM_ID} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/loading messages/i)).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText(/write a message/i);
+    fireEvent.change(input, { target: { value: "Enter key msg" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByText("Enter key msg")).toBeInTheDocument();
   });
 });

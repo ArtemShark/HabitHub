@@ -8,6 +8,10 @@ jest.mock("next/link", () => {
   );
 });
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 jest.mock("framer-motion", () => {
   const React = require("react");
 
