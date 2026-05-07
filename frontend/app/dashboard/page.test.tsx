@@ -198,17 +198,24 @@ describe("DashboardPage integration-style tests", () => {
     expect(screen.getByText("Completion Rate")).toBeInTheDocument();
     expect(screen.getByText("Habit Coverage")).toBeInTheDocument();
 
+    expect(await screen.findByText("Chrome on Windows")).toBeInTheDocument();
+    expect(screen.getByText(/current session/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /terminate session/i })).toBeInTheDocument();
+
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledTimes(6);
     });
 
-    const [firstUrl, firstOptions] = mockFetch.mock.calls[0];
-    expect(String(firstUrl)).toBe("http://test/api/habits?memberId=user-123");
-    expect((firstOptions as RequestInit).cache).toBe("no-store");
-    expect((firstOptions as RequestInit).method).toBe("GET");
-    expect(((firstOptions as RequestInit).headers as Headers).get("Authorization")).toContain(
-      "Bearer"
+    const habitsCall = mockFetch.mock.calls.find(
+      ([url]) => String(url) === "http://test/api/habits?memberId=user-123"
     );
+
+    expect(habitsCall).toBeDefined();
+
+    const [, habitsOptions] = habitsCall!;
+    expect((habitsOptions as RequestInit).cache).toBe("no-store");
+    expect((habitsOptions as RequestInit).method).toBe("GET");
+    expect(((habitsOptions as RequestInit).headers as Headers).get("Authorization")).toContain("Bearer");
   });
 
   it("submits a quantitative habit log through the real apiFetch flow", async () => {
@@ -305,6 +312,61 @@ describe("DashboardPage integration-style tests", () => {
     await waitFor(() => {
       expect(screen.queryByText(/log habit/i)).not.toBeInTheDocument();
     });
+  });
+
+  it("terminates a session and removes it from the dashboard", async () => {
+    const today = new Date().toISOString().split("T")[0];
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === "http://test/api/sessions" && (!init?.method || init.method === "GET")) {
+        return jsonResponse([
+          {
+            sessionId: "session-2",
+            memberId: "user-123",
+            device: "Firefox on Linux",
+            ipAddress: "127.0.0.2",
+            state: "Active",
+            createdAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          },
+        ]);
+      }
+
+      if (url === "http://test/api/sessions/session-2" && init?.method === "DELETE") {
+        return {
+          ok: true,
+          status: 204,
+          headers: { get: () => null },
+          text: async () => "",
+        };
+      }
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
+    render(<HomePage />);
+
+    expect(await screen.findByText("Firefox on Linux")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /terminate session/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Firefox on Linux")).not.toBeInTheDocument();
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://test/api/sessions/session-2",
+      expect.objectContaining({
+        method: "DELETE",
+      })
+    );
   });
 
   it("shows the real apiFetch error message when the habits request fails", async () => {
