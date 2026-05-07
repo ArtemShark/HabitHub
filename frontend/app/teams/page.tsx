@@ -30,6 +30,7 @@ import SectionTitle from "../components/SectionTitle";
 import StatPill from "../components/StatPill";
 import { itemVariants } from "../auxiliary/variants/itemVariant";
 import { containerVariants } from "../auxiliary/variants/containerVariants";
+import { useRouter } from "next/navigation";
 
 type TeamMember = {
   memberId?: string;
