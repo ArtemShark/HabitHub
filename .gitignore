@@ -37,6 +37,12 @@ frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
 
+# =========================
+# Coverage reports
+# =========================
+frontend/coverage/
+backend/coverage-report*/
+backend/**/coverage-report*/
 
 # =========================
 # Temp / cache

@@ -1,32 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { motion, type Variants, AnimatePresence } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import {
   Activity,
-  Bell,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
-  Clock3,
   Filter,
   LineChart,
   Loader2,
-  LogOut,
   NotebookPen,
   Search,
-  Settings,
   Target,
-  User,
-  AlertCircle,
   CircleSlash,
   Binary,
   Hash,
 } from "lucide-react";
 
-import NotificationDropdown from "../notifications/NotificationDropdown";
 import { apiFetch } from "../auxiliary/apiFetch";
 import { mapHabit } from "../auxiliary/mapHabit";
 import {
@@ -36,6 +27,12 @@ import {
 } from "../dto/Habit";
 import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
 import { fetchUserNamesByIds } from "../auxiliary/fetchUserNames";
+import Card from "../components/Card";
+import PageHeader from "../components/PageHeader";
+import SectionTitle from "../components/SectionTitle";
+import StatPill from "../components/StatPill";
+import { itemVariants } from "../auxiliary/variants/itemVariant";
+import { containerVariants } from "../auxiliary/variants/containerVariants";
 
 async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
   const dtos = await apiFetch<HabitResponseDto[]>(
@@ -55,228 +52,6 @@ type HabitWithEntries = Habit & {
   entries: HabitEntryResponse[];
 };
 
-const containerVariants: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08 } },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 18 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.45, ease: [0.25, 0.1, 0.25, 1] },
-  },
-};
-
-function NavButton({
-  href,
-  label,
-  active = false,
-}: {
-  href: string;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <Link href={href}>
-      <motion.div
-        whileHover={{ y: -2, scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        className={[
-          "group relative overflow-hidden rounded-2xl border px-5 py-2.5 text-sm font-medium backdrop-blur-md transition md:text-base",
-          active
-            ? "border-emerald-400/70 bg-emerald-400/10 text-white shadow-[0_0_24px_rgba(16,185,129,0.18)]"
-            : "border-white/15 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",
-        ].join(" ")}
-      >
-        <span className="relative z-10">{label}</span>
-        {active && (
-          <span className="absolute inset-x-4 bottom-1 h-[2px] rounded-full bg-emerald-400" />
-        )}
-      </motion.div>
-    </Link>
-  );
-}
-
-function IconButton({
-  href,
-  children,
-}: {
-  href: string;
-  children: ReactNode;
-}) {
-  return (
-    <Link href={href}>
-      <motion.div
-        whileHover={{ y: -2, scale: 1.05 }}
-        whileTap={{ scale: 0.96 }}
-        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/5 text-white/80 backdrop-blur-md transition hover:border-white/25 hover:bg-white/10 hover:text-white md:h-12 md:w-12"
-      >
-        {children}
-      </motion.div>
-    </Link>
-  );
-}
-
-function SettingsDropdown() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  return (
-    <div ref={ref} className="relative">
-      <motion.button
-        whileHover={{ y: -2, scale: 1.05 }}
-        whileTap={{ scale: 0.96 }}
-        onClick={() => setOpen((prev) => !prev)}
-        className={[
-          "flex h-11 w-11 items-center justify-center rounded-2xl border backdrop-blur-md transition md:h-12 md:w-12",
-          open
-            ? "border-white/25 bg-white/10 text-white"
-            : "border-white/15 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",
-        ].join(" ")}
-      >
-        <Settings className="h-5 w-5" />
-      </motion.button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -8 }}
-            transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
-            className="absolute right-0 top-14 z-50 w-52 overflow-hidden rounded-[20px] border border-white/10 bg-[#0D1117]/90 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-2xl"
-          >
-            <div className="border-b border-white/8 px-4 py-3">
-              <p className="text-xs text-white/40">Signed in as</p>
-              <p className="mt-0.5 truncate text-sm font-medium text-white">
-                {typeof window !== "undefined"
-                  ? JSON.parse(localStorage.getItem("user") || "{}").username ?? "User"
-                  : "User"}
-              </p>
-            </div>
-
-            <Link
-              href="/profile"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-3 px-4 py-3 text-sm text-white/75 transition hover:bg-white/6 hover:text-white"
-            >
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-300">
-                <User className="h-3.5 w-3.5" />
-              </span>
-              My Profile
-            </Link>
-
-            <div className="mx-4 border-t border-white/8" />
-
-            <button
-              onClick={() => {
-                setOpen(false);
-                window.location.href = "/logout";
-              }}
-              className="flex w-full items-center gap-3 px-4 py-3 text-sm text-rose-400/80 transition hover:bg-rose-500/8 hover:text-rose-400"
-            >
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-rose-500/15 text-rose-400">
-                <LogOut className="h-3.5 w-3.5" />
-              </span>
-              Log out
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function SectionTitle({
-  icon,
-  title,
-  subtitle,
-  align = "left",
-}: {
-  icon: ReactNode;
-  title: string;
-  subtitle?: string;
-  align?: "left" | "center";
-}) {
-  return (
-    <div
-      className={[
-        "mb-4 flex items-center gap-3",
-        align === "center" ? "justify-center text-center" : "justify-start",
-      ].join(" ")}
-    >
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/8 text-white/90">
-        {icon}
-      </span>
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight text-white md:text-2xl">
-          {title}
-        </h2>
-        {subtitle && <p className="mt-1 text-sm text-white/50">{subtitle}</p>}
-      </div>
-    </div>
-  );
-}
-
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={[
-        "relative overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl",
-        "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.10),transparent_35%)]",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
-
-function StatPill({
-  label,
-  value,
-  accent = "emerald",
-}: {
-  label: string;
-  value: number;
-  accent?: "emerald" | "indigo" | "cyan";
-}) {
-  const colorMap = {
-    emerald: "bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-400/20",
-    indigo: "bg-indigo-400/10 text-indigo-300 ring-1 ring-indigo-400/20",
-    cyan: "bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20",
-  } as const;
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-white/45">{label}</p>
-      <div className="mt-3 flex items-center justify-between">
-        <p className="text-2xl font-semibold text-white">{value}</p>
-        <span className={`rounded-full px-3 py-1 text-xs font-medium ${colorMap[accent]}`}>
-          {label}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -388,36 +163,11 @@ export default function ProgressPage() {
         transition={{ duration: 0.55, ease: [0.25, 0.1, 0.25, 1] }}
         className="relative mx-auto max-w-7xl rounded-[36px] border border-white/10 bg-black/35 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:p-5 md:rounded-[42px] md:p-7"
       >
-        <header className="flex flex-col gap-5 border-b border-white/10 pb-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-emerald-300/70">
-                HabitHub
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">
-                Progress
-              </h1>
-              <p className="mt-2 text-sm text-white/50">
-                Review all recorded habit logs in one place.
-              </p>
-            </div>
-
-            <nav className="flex flex-wrap gap-3">
-              <NavButton href="/dashboard" label="Home" />
-              <NavButton href="/teams" label="Teams" />
-              <NavButton href="/habits" label="Habits" />
-              <NavButton href="/progress" label="Progress" active />
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-3 self-start lg:self-auto">
-            <NotificationDropdown />
-            <IconButton href="/sessions">
-              <Clock3 className="h-5 w-5" />
-            </IconButton>
-            <SettingsDropdown />
-          </div>
-        </header>
+        <PageHeader
+          title="Progress"
+          subtitle="Review all recorded habit logs in one place."
+          activePage="progress"
+        />
 
         {error && (
           <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
