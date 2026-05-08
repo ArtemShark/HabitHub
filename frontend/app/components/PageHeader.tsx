@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Clock3 } from "lucide-react";
+import { Bell, Clock3, MonitorSmartphone } from "lucide-react";
 import NotificationDropdown from "@/app/notifications/NotificationDropdown";
 import IconButton from "./IconButton";
 import SettingsDropdown from "./SettingsDropdown";
@@ -43,6 +43,9 @@ export default function PageHeader({
         </IconButton>
 
         <SettingsDropdown />
+        <IconButton href="/sessions">
+            <MonitorSmartphone className="h-5 w-5"/>
+        </IconButton>
       </div>
     </header>
   );
