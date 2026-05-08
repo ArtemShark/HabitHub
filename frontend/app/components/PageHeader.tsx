@@ -9,7 +9,7 @@ import TopNavigation from "./TopNavigation";
 type PageHeaderProps = {
   title: string;
   subtitle: string;
-  activePage: "dashboard" | "teams" | "habits" | "progress";
+  activePage: "dashboard" | "teams" | "habits" | "progress" ;
 };
 
 export default function PageHeader({
@@ -38,7 +38,7 @@ export default function PageHeader({
       <div className="flex items-center gap-3 self-start lg:self-auto">
         <NotificationDropdown />
 
-        <IconButton href="/sessions">
+        <IconButton href="/reminders">
           <Clock3 className="h-5 w-5" />
         </IconButton>
 
