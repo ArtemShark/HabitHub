@@ -300,4 +300,220 @@ describe("ProgressPage integration-style tests", () => {
 
     expect(await screen.findByText("Progress load failed")).toBeInTheDocument();
   });
+
+  it("shows Undo only for today's own entry on an active habit and removes it immediately after DELETE", async () => {
+    const today = new Date().toISOString();
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-today",
+            habitTeamId: "team-1",
+            creatorId: "creator-1",
+            name: "Today Habit",
+            goal: null,
+            habitState: "active",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      if (url === "http://test/api/habits/habit-today/entries") {
+        return jsonResponse([
+          {
+            habitEntryId: "entry-today-own",
+            habitId: "habit-today",
+            memberId: "user-123",
+            status: "Logged",
+            notes: "My today log",
+            date: today,
+          },
+        ]);
+      }
+
+      if (url === "http://test/api/members/info?ids=user-123") {
+        return jsonResponse([{ memberId: "user-123", name: "Current User" }]);
+      }
+
+      if (url === "http://test/api/habits/habit-today/entries/entry-today-own") {
+        expect(init?.method).toBe("DELETE");
+        return textResponse("", 204);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
+    render(<ProgressPage />);
+
+    expect(await screen.findByText("Today Habit")).toBeInTheDocument();
+    expect(await screen.findByText("My today log")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://test/api/habits/habit-today/entries/entry-today-own",
+        expect.objectContaining({ method: "DELETE" })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("My today log")).not.toBeInTheDocument();
+      expect(screen.getByText("No logs yet for this habit.")).toBeInTheDocument();
+      expect(screen.getByText("Log undone successfully.")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show Undo for a past own entry", async () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-past",
+            habitTeamId: "team-1",
+            creatorId: "creator-1",
+            name: "Past Habit",
+            goal: null,
+            habitState: "active",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      if (url === "http://test/api/habits/habit-past/entries") {
+        return jsonResponse([
+          {
+            habitEntryId: "entry-past-own",
+            habitId: "habit-past",
+            memberId: "user-123",
+            status: "Logged",
+            notes: "Past own log",
+            date: yesterday,
+          },
+        ]);
+      }
+
+      if (url.startsWith("http://test/api/members/info?ids=")) {
+        return jsonResponse([{ memberId: "user-123", name: "Current User" }]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
+    render(<ProgressPage />);
+
+    expect(await screen.findByText("Past Habit")).toBeInTheDocument();
+    expect(await screen.findByText("Past own log")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^undo$/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show Undo for another member's today entry", async () => {
+    const today = new Date().toISOString();
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-other-user",
+            habitTeamId: "team-1",
+            creatorId: "creator-1",
+            name: "Shared Habit",
+            goal: null,
+            habitState: "active",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      if (url === "http://test/api/habits/habit-other-user/entries") {
+        return jsonResponse([
+          {
+            habitEntryId: "entry-today-other",
+            habitId: "habit-other-user",
+            memberId: "member-other",
+            status: "Logged",
+            notes: "Other member log",
+            date: today,
+          },
+        ]);
+      }
+
+      if (url.startsWith("http://test/api/members/info?ids=")) {
+        return jsonResponse([{ memberId: "member-other", name: "Other Member" }]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
+    render(<ProgressPage />);
+
+    expect(await screen.findByText("Shared Habit")).toBeInTheDocument();
+    expect(await screen.findByText("Other member log")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^undo$/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show Undo for today's own entry when the habit is archived", async () => {
+    const today = new Date().toISOString();
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-archived-own",
+            habitTeamId: "team-1",
+            creatorId: "creator-1",
+            name: "Archived Habit",
+            goal: null,
+            habitState: "archived",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      if (url === "http://test/api/habits/habit-archived-own/entries") {
+        return jsonResponse([
+          {
+            habitEntryId: "entry-archived-own",
+            habitId: "habit-archived-own",
+            memberId: "user-123",
+            status: "Logged",
+            notes: "Archived today log",
+            date: today,
+          },
+        ]);
+      }
+
+      if (url.startsWith("http://test/api/members/info?ids=")) {
+        return jsonResponse([{ memberId: "user-123", name: "Current User" }]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
+    render(<ProgressPage />);
+
+    expect(await screen.findByText("Archived Habit")).toBeInTheDocument();
+    expect(await screen.findByText("Archived today log")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^undo$/i })).not.toBeInTheDocument();
+  });
+
 });

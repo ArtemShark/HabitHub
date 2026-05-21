@@ -262,6 +262,53 @@ public class HabitsController : ControllerBase
         return CreatedAtAction(nameof(GetHabitEntries), new { habitId }, response);
     }
 
+    [HttpDelete("{habitId:guid}/entries/{entryId:guid}")]
+    public async Task<IActionResult> UndoLog([FromRoute] Guid habitId, [FromRoute] Guid entryId)
+    {
+        var userId = GetCurrentUserId.GetUserId(User);
+        if (userId == null)
+            return Unauthorized();
+
+        var habit = await _context.Habits
+            .Include(h => h.Team)
+                .ThenInclude(t => t.Memberships)
+            .FirstOrDefaultAsync(h => h.HabitId == habitId);
+
+        if (habit == null)
+            return NotFound("Habit not found");
+
+        if (!habit.Team.Memberships.Any(m =>
+                m.MemberId == userId.Value &&
+                m.Status == MembershipStatus.Active))
+        {
+            return Forbid();
+        }
+
+        if (habit.HabitState == HabitState.Archived)
+            return Conflict("habit-archived");
+
+        if (habit.HabitState == HabitState.Closed)
+            return Conflict("habit-closed");
+
+        var entry = await _context.HabitEntries
+            .FirstOrDefaultAsync(e => e.HabitEntryId == entryId && e.HabitId == habitId);
+
+        if (entry == null)
+            return NotFound("log-not-found");
+
+        if (entry.MemberId != userId.Value)
+            return Forbid();
+
+        var today = DateTime.UtcNow.Date;
+        if (entry.Date.Date != today)
+            return BadRequest("Only today's log can be undone");
+
+        _context.HabitEntries.Remove(entry);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
     [HttpGet("{habitId:guid}/entries")]
     public async Task<ActionResult<List<LogHabitResponse>>> GetHabitEntries(
         [FromRoute] Guid habitId,

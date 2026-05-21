@@ -314,6 +314,164 @@ describe("DashboardPage integration-style tests", () => {
     });
   });
 
+
+  it("allows undoing today's own habit log from Today's Goals", async () => {
+    const today = new Date().toISOString().split("T")[0];
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === "http://test/api/sessions") {
+        return jsonResponse([]);
+      }
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-binary",
+            habitTeamId: "team-1",
+            creatorId: "user-123",
+            name: "Read Book",
+            goal: null,
+            habitState: "active",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      if (url === `http://test/api/habits/habit-binary/entries?date=${today}`) {
+        return jsonResponse([
+          {
+            habitEntryId: "today-entry-1",
+            habitId: "habit-binary",
+            memberId: "user-123",
+            status: "Logged",
+            notes: "done today",
+            date: `${today}T09:00:00Z`,
+          },
+        ]);
+      }
+
+      if (
+        url === "http://test/api/habits/habit-binary/entries" &&
+        (!init?.method || init.method === "GET")
+      ) {
+        return jsonResponse([
+          {
+            habitEntryId: "today-entry-1",
+            habitId: "habit-binary",
+            memberId: "user-123",
+            status: "Logged",
+            notes: "done today",
+            date: `${today}T09:00:00Z`,
+          },
+        ]);
+      }
+
+      if (
+        url === "http://test/api/habits/habit-binary/entries/today-entry-1" &&
+        init?.method === "DELETE"
+      ) {
+        return {
+          ok: true,
+          status: 204,
+          headers: { get: () => null },
+          text: async () => "",
+        };
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
+    render(<HomePage />);
+
+    expect(await screen.findByText("Read Book")).toBeInTheDocument();
+    expect(await screen.findByText("Completed today")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Completed today")).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Still in progress")).toBeInTheDocument();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://test/api/habits/habit-binary/entries/today-entry-1",
+      expect.objectContaining({
+        method: "DELETE",
+      })
+    );
+  });
+
+  it("does not treat another member's today's log as my completed dashboard goal", async () => {
+    const today = new Date().toISOString().split("T")[0];
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === "http://test/api/sessions") {
+        return jsonResponse([]);
+      }
+
+      if (url === "http://test/api/habits?memberId=user-123") {
+        return jsonResponse([
+          {
+            habitId: "habit-binary",
+            habitTeamId: "team-1",
+            creatorId: "creator-1",
+            name: "Read Book",
+            goal: null,
+            habitState: "active",
+            expiryDate: null,
+            habitType: "binary",
+            unit: null,
+          },
+        ]);
+      }
+
+      if (url === `http://test/api/habits/habit-binary/entries?date=${today}`) {
+        return jsonResponse([
+          {
+            habitEntryId: "other-entry-1",
+            habitId: "habit-binary",
+            memberId: "other-user",
+            status: "Logged",
+            notes: "someone else",
+            date: `${today}T09:00:00Z`,
+          },
+        ]);
+      }
+
+      if (
+        url === "http://test/api/habits/habit-binary/entries" &&
+        (!init?.method || init.method === "GET")
+      ) {
+        return jsonResponse([
+          {
+            habitEntryId: "other-entry-1",
+            habitId: "habit-binary",
+            memberId: "other-user",
+            status: "Logged",
+            notes: "someone else",
+            date: `${today}T09:00:00Z`,
+          },
+        ]);
+      }
+
+      throw new Error(`Unhandled fetch URL: ${url}`);
+    });
+
+    render(<HomePage />);
+
+    expect(await screen.findByText("Read Book")).toBeInTheDocument();
+    expect(screen.getByText("Still in progress")).toBeInTheDocument();
+    expect(screen.queryByText("Completed today")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /undo/i })).not.toBeInTheDocument();
+  });
+
   it("terminates a session and removes it from the dashboard", async () => {
     const today = new Date().toISOString().split("T")[0];
 

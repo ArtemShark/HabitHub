@@ -16,6 +16,7 @@ import {
   CircleSlash,
   Binary,
   Hash,
+  Undo2,
 } from "lucide-react";
 
 import { apiFetch } from "../auxiliary/apiFetch";
@@ -48,6 +49,12 @@ async function fetchEntriesForHabit(habitId: string): Promise<HabitEntryResponse
   });
 }
 
+async function undoLog(habitId: string, entryId: string): Promise<void> {
+  await apiFetch<void>(`/api/habits/${habitId}/entries/${entryId}`, {
+    method: "DELETE",
+  });
+}
+
 type HabitWithEntries = Habit & {
   entries: HabitEntryResponse[];
 };
@@ -69,8 +76,41 @@ export default function ProgressPage() {
   const [filter, setFilter] = useState<"all" | "active" | "archived">("all");
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const [userMap, setUserMap] = useState<Record<string, string>>({});
+  const [success, setSuccess] = useState("");
+  const [undoingId, setUndoingId] = useState<string | null>(null);
 
   const currentUserId = useMemo(() => getCurrentUserId(), []);
+
+  function isToday(dateStr: string): boolean {
+    const entryDate = new Date(dateStr);
+    const now = new Date();
+    return (
+      entryDate.getUTCFullYear() === now.getUTCFullYear() &&
+      entryDate.getUTCMonth() === now.getUTCMonth() &&
+      entryDate.getUTCDate() === now.getUTCDate()
+    );
+  }
+
+  async function handleUndoLog(habitId: string, entryId: string) {
+    try {
+      setError("");
+      setSuccess("");
+      setUndoingId(entryId);
+      await undoLog(habitId, entryId);
+      setHabitLogs((prev) =>
+        prev.map((h) =>
+          h.id === habitId
+            ? { ...h, entries: h.entries.filter((e) => e.habitEntryId !== entryId) }
+            : h
+        )
+      );
+      setSuccess("Log undone successfully.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to undo log.");
+    } finally {
+      setUndoingId(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +212,11 @@ export default function ProgressPage() {
         {error && (
           <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
             {error}
+          </div>
+        )}
+        {success && (
+          <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+            {success}
           </div>
         )}
 
@@ -411,6 +456,29 @@ export default function ProgressPage() {
                               </div>
                             )}
                           </div>
+
+                          {currentUserId &&
+                            entry.memberId === currentUserId &&
+                            isToday(entry.date) &&
+                            selectedHabit.status === "active" && (
+                              <div className="flex items-start">
+                                <button
+                                  onClick={() =>
+                                    void handleUndoLog(
+                                      selectedHabit.id,
+                                      entry.habitEntryId
+                                    )
+                                  }
+                                  disabled={undoingId === entry.habitEntryId}
+                                  className="inline-flex items-center gap-2 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-2.5 text-sm font-medium text-amber-300 transition hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <Undo2 className="h-4 w-4" />
+                                  {undoingId === entry.habitEntryId
+                                    ? "Undoing..."
+                                    : "Undo"}
+                                </button>
+                              </div>
+                            )}
                         </div>
                       </motion.div>
                     ))}

@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Loader2,
   AlertCircle,
+  Undo2,
 } from "lucide-react";
 import { Habit, HabitEntryResponse, HabitResponseDto } from "../dto/Habit";
 import { mapHabit } from "../auxiliary/mapHabit";
@@ -38,6 +39,20 @@ async function fetchEntriesForHabit(habitId: string): Promise<HabitEntryResponse
   return apiFetch<HabitEntryResponse[]>(`/api/habits/${habitId}/entries`, {
     method: "GET",
   });
+}
+
+async function undoLog(habitId: string, entryId: string): Promise<void> {
+  await apiFetch<void>(`/api/habits/${habitId}/entries/${entryId}`, {
+    method: "DELETE",
+  });
+}
+
+function isLoggedStatus(status: number | string): boolean {
+  return status === "Logged" || status === 0;
+}
+
+function isSkippedStatus(status: number | string): boolean {
+  return status === "Skipped" || status === 2;
 }
 
 async function fetchSessionsForMember(memberId: string): Promise<Session[]> {
@@ -136,7 +151,9 @@ export default function HomePage() {
   const [habitsError, setHabitsError] = useState("");
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [allEntries, setAllEntries] = useState<HabitEntryResponse[]>([]);
-  const [selectedHabit, setSelectedHabit] = useState<(typeof todaysGoals)[number] | null>(null);
+  const [todayEntriesByHabitId, setTodayEntriesByHabitId] = useState<Record<string, HabitEntryResponse>>({});
+  const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
+  const [undoingEntryId, setUndoingEntryId] = useState<string | null>(null);
   const [logValue, setLogValue] = useState("");
   const [logNote, setLogNote] = useState("");
   const [logStatus, setLogStatus] = useState<"Logged" | "Skipped">("Logged");
@@ -174,21 +191,32 @@ export default function HomePage() {
               fetchEntriesForHabit(habit.id),
             ]);
 
-            return { habitId: habit.id, todayEntries, allHabitEntries };
+            const myTodayEntry = todayEntries.find(
+              (entry) => entry.memberId === currentUserId
+            ) ?? null;
+
+            return { habitId: habit.id, myTodayEntry, allHabitEntries };
           })
         );
 
         const nextCompletedIds = new Set<string>();
+        const nextTodayEntriesByHabitId: Record<string, HabitEntryResponse> = {};
         const collectedEntries: HabitEntryResponse[] = [];
 
-        for (const { habitId, todayEntries, allHabitEntries } of entriesPerHabit) {
-          if (todayEntries.some((entry) => entry.status === "Logged")) {
-            nextCompletedIds.add(habitId);
+        for (const { habitId, myTodayEntry, allHabitEntries } of entriesPerHabit) {
+          if (myTodayEntry) {
+            nextTodayEntriesByHabitId[habitId] = myTodayEntry;
+
+            if (isLoggedStatus(myTodayEntry.status)) {
+              nextCompletedIds.add(habitId);
+            }
           }
+
           collectedEntries.push(...allHabitEntries);
         }
 
         setCompletedIds(nextCompletedIds);
+        setTodayEntriesByHabitId(nextTodayEntriesByHabitId);
         setAllEntries(collectedEntries);
 
         hasFetchedRef.current = true;
@@ -247,9 +275,7 @@ export default function HomePage() {
       : 0;
 
     const totalEntries = allEntries.length;
-    const loggedCount = allEntries.filter(
-      (e) => e.status === "Logged" || e.status === 0
-    ).length;
+    const loggedCount = allEntries.filter((e) => isLoggedStatus(e.status)).length;
     const completionPercent = totalEntries > 0
       ? Math.round((loggedCount / totalEntries) * 100)
       : 0;
@@ -262,7 +288,7 @@ export default function HomePage() {
       allEntries
         .filter(
           (e) =>
-            (e.status === "Logged" || e.status === 0) &&
+            isLoggedStatus(e.status) &&
             new Date(e.date) >= sevenDaysAgo
         )
         .map((e) => e.habitId)
@@ -301,7 +327,7 @@ export default function HomePage() {
     });
   };
 
-  const openLogModal = (habit: (typeof todaysGoals)[number]) => {
+  const openLogModal = (habit: Habit) => {
     setSelectedHabit(habit);
     setLogValue("");
     setLogNote("");
@@ -331,7 +357,7 @@ export default function HomePage() {
           };
 
     try {
-      await apiFetch<HabitEntryResponse>(`/api/habits/${selectedHabit.id}/entries`, {
+      const createdEntry = await apiFetch<HabitEntryResponse>(`/api/habits/${selectedHabit.id}/entries`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -339,7 +365,17 @@ export default function HomePage() {
         body: JSON.stringify(body),
       });
 
-      if (logStatus === "Logged") {
+      setTodayEntriesByHabitId((prev) => ({
+        ...prev,
+        [selectedHabit.id]: createdEntry,
+      }));
+
+      setAllEntries((prev) => [
+        ...prev.filter((entry) => entry.habitEntryId !== createdEntry.habitEntryId),
+        createdEntry,
+      ]);
+
+      if (isLoggedStatus(createdEntry.status)) {
         setCompletedIds((prev) => new Set(prev).add(selectedHabit.id));
       } else {
         setCompletedIds((prev) => {
@@ -354,6 +390,37 @@ export default function HomePage() {
       console.error("Error logging habit:", error);
     }
   };
+
+
+  async function handleUndoTodayLog(habit: Habit) {
+    const entry = todayEntriesByHabitId[habit.id];
+    if (!entry) return;
+
+    try {
+      setUndoingEntryId(entry.habitEntryId);
+      await undoLog(habit.id, entry.habitEntryId);
+
+      setTodayEntriesByHabitId((prev) => {
+        const next = { ...prev };
+        delete next[habit.id];
+        return next;
+      });
+
+      setCompletedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(habit.id);
+        return next;
+      });
+
+      setAllEntries((prev) =>
+        prev.filter((existingEntry) => existingEntry.habitEntryId !== entry.habitEntryId)
+      );
+    } catch (error) {
+      console.error("Error undoing habit log:", error);
+    } finally {
+      setUndoingEntryId(null);
+    }
+  }
 
   async function terminateSession(sessionId: string) {
     try {
@@ -563,24 +630,37 @@ export default function HomePage() {
               ) : (
                 <div className="space-y-4">
                   {todaysGoals.map((habit) => {
-                    const done = completedIds.has(habit.id);
+                    const todayEntry = todayEntriesByHabitId[habit.id];
+                    const done = Boolean(todayEntry && isLoggedStatus(todayEntry.status));
+                    const skipped = Boolean(todayEntry && isSkippedStatus(todayEntry.status));
+                    const hasTodayEntry = Boolean(todayEntry);
 
                     return (
                       <motion.div
                         key={habit.id}
                         whileHover={{ y: -2, scale: 1.01 }}
-                        onClick={() => openLogModal(habit)}
-                        className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/10"
+                        onClick={() => {
+                          if (!hasTodayEntry) {
+                            openLogModal(habit);
+                          }
+                        }}
+                        className={[
+                          "flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/10",
+                          hasTodayEntry ? "cursor-default" : "cursor-pointer",
+                        ].join(" ")}
                       >
                         <input
                           type="checkbox"
                           checked={done}
+                          disabled={hasTodayEntry}
                           onChange={(e) => {
                             e.stopPropagation();
-                            openLogModal(habit);
+                            if (!hasTodayEntry) {
+                              openLogModal(habit);
+                            }
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="mt-1 h-4 w-4 rounded accent-emerald-400"
+                          className="mt-1 h-4 w-4 rounded accent-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                         />
 
                         <div className="flex-1">
@@ -595,11 +675,28 @@ export default function HomePage() {
                           <p className="mt-1 text-sm text-white/45">
                             {done
                               ? "Completed today"
-                              : habit.type === "quantitative" && habit.goal
-                                ? `Target: ${habit.goal}${habit.unit ? ` ${habit.unit}` : ""}`
-                                : "Still in progress"}
+                              : skipped
+                                ? "Skipped today"
+                                : habit.type === "quantitative" && habit.goal
+                                  ? `Target: ${habit.goal}${habit.unit ? ` ${habit.unit}` : ""}`
+                                  : "Still in progress"}
                           </p>
                         </div>
+
+                        {todayEntry && todayEntry.memberId === currentUserId && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleUndoTodayLog(habit);
+                            }}
+                            disabled={undoingEntryId === todayEntry.habitEntryId}
+                            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs font-medium text-amber-300 transition hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                            {undoingEntryId === todayEntry.habitEntryId ? "Undoing..." : "Undo"}
+                          </button>
+                        )}
                       </motion.div>
                     );
                   })}

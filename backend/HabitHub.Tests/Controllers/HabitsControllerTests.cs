@@ -551,4 +551,165 @@ public class HabitsControllerTests
         Assert.Single(entries);
         Assert.Equal("match", entries[0].Notes);
     }
+
+    // ── UndoLog tests ────────────────────────────────────────────
+
+    [Fact]
+    public async Task UndoLog_WithoutAuth_ReturnsUnauthorized()
+    {
+        var (controller, _) = CreateController(userId: null);
+
+        var result = await controller.UndoLog(Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task UndoLog_WhenHabitMissing_ReturnsNotFound()
+    {
+        var (controller, db) = CreateController();
+        var me = TestHelper.SeedMember(db);
+        TestHelper.SetAuthenticatedUser(controller, me.MemberId);
+
+        var result = await controller.UndoLog(Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task UndoLog_WhenNotActiveMember_ReturnsForbid()
+    {
+        var (controller, db) = CreateController();
+        var creator = TestHelper.SeedMember(db);
+        var outsider = TestHelper.SeedMember(db);
+        var team = TestHelper.SeedTeam(db, creator.MemberId);
+        var habit = TestHelper.SeedHabit(db, team.HabitTeamId, creator.MemberId);
+        TestHelper.SetAuthenticatedUser(controller, outsider.MemberId);
+
+        var result = await controller.UndoLog(habit.HabitId, Guid.NewGuid());
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task UndoLog_WhenHabitArchived_ReturnsConflict()
+    {
+        var (controller, db) = CreateController();
+        var me = TestHelper.SeedMember(db);
+        var team = TestHelper.SeedTeam(db, me.MemberId);
+        var habit = TestHelper.SeedHabit(db, team.HabitTeamId, me.MemberId, state: HabitState.Archived);
+        TestHelper.SetAuthenticatedUser(controller, me.MemberId);
+
+        var result = await controller.UndoLog(habit.HabitId, Guid.NewGuid());
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal("habit-archived", conflict.Value);
+    }
+
+    [Fact]
+    public async Task UndoLog_WhenHabitClosed_ReturnsConflict()
+    {
+        var (controller, db) = CreateController();
+        var me = TestHelper.SeedMember(db);
+        var team = TestHelper.SeedTeam(db, me.MemberId);
+        var habit = TestHelper.SeedHabit(db, team.HabitTeamId, me.MemberId, state: HabitState.Closed);
+        TestHelper.SetAuthenticatedUser(controller, me.MemberId);
+
+        var result = await controller.UndoLog(habit.HabitId, Guid.NewGuid());
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal("habit-closed", conflict.Value);
+    }
+
+    [Fact]
+    public async Task UndoLog_WhenEntryNotFound_ReturnsNotFound()
+    {
+        var (controller, db) = CreateController();
+        var me = TestHelper.SeedMember(db);
+        var team = TestHelper.SeedTeam(db, me.MemberId);
+        var habit = TestHelper.SeedHabit(db, team.HabitTeamId, me.MemberId);
+        TestHelper.SetAuthenticatedUser(controller, me.MemberId);
+
+        var result = await controller.UndoLog(habit.HabitId, Guid.NewGuid());
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal("log-not-found", notFound.Value);
+    }
+
+    [Fact]
+    public async Task UndoLog_WhenEntryBelongsToAnotherUser_ReturnsForbid()
+    {
+        var (controller, db) = CreateController();
+        var creator = TestHelper.SeedMember(db);
+        var member = TestHelper.SeedMember(db);
+        var team = TestHelper.SeedTeam(db, creator.MemberId, extraMemberIds: new[] { member.MemberId });
+        var habit = TestHelper.SeedHabit(db, team.HabitTeamId, creator.MemberId);
+        var entry = new HabitEntry
+        {
+            HabitEntryId = Guid.NewGuid(),
+            HabitId = habit.HabitId,
+            MemberId = creator.MemberId,
+            Status = EntryStatus.Logged,
+            Notes = "creator's log",
+            Date = DateTime.UtcNow
+        };
+        db.HabitEntries.Add(entry);
+        await db.SaveChangesAsync();
+        TestHelper.SetAuthenticatedUser(controller, member.MemberId);
+
+        var result = await controller.UndoLog(habit.HabitId, entry.HabitEntryId);
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task UndoLog_WhenEntryIsFromPastDay_ReturnsBadRequest()
+    {
+        var (controller, db) = CreateController();
+        var me = TestHelper.SeedMember(db);
+        var team = TestHelper.SeedTeam(db, me.MemberId);
+        var habit = TestHelper.SeedHabit(db, team.HabitTeamId, me.MemberId);
+        var entry = new HabitEntry
+        {
+            HabitEntryId = Guid.NewGuid(),
+            HabitId = habit.HabitId,
+            MemberId = me.MemberId,
+            Status = EntryStatus.Logged,
+            Notes = "yesterday",
+            Date = DateTime.UtcNow.AddDays(-1)
+        };
+        db.HabitEntries.Add(entry);
+        await db.SaveChangesAsync();
+        TestHelper.SetAuthenticatedUser(controller, me.MemberId);
+
+        var result = await controller.UndoLog(habit.HabitId, entry.HabitEntryId);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task UndoLog_HappyPath_RemovesEntryAndReturnsNoContent()
+    {
+        var (controller, db) = CreateController();
+        var me = TestHelper.SeedMember(db);
+        var team = TestHelper.SeedTeam(db, me.MemberId);
+        var habit = TestHelper.SeedHabit(db, team.HabitTeamId, me.MemberId);
+        var entry = new HabitEntry
+        {
+            HabitEntryId = Guid.NewGuid(),
+            HabitId = habit.HabitId,
+            MemberId = me.MemberId,
+            Status = EntryStatus.Logged,
+            Notes = "today",
+            Date = DateTime.UtcNow
+        };
+        db.HabitEntries.Add(entry);
+        await db.SaveChangesAsync();
+        TestHelper.SetAuthenticatedUser(controller, me.MemberId);
+
+        var result = await controller.UndoLog(habit.HabitId, entry.HabitEntryId);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.False(await db.HabitEntries.AnyAsync(e => e.HabitEntryId == entry.HabitEntryId));
+    }
 }
