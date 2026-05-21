@@ -10,12 +10,12 @@ import {
   CheckCircle2,
   CalendarDays,
   Target,
+  Trophy,
 } from "lucide-react";
 import { Habit, HabitFormData, HabitResponseDto, UpdateHabitRequestDto, HabitStatus } from "../dto/Habit";
 import { mapHabit } from "../auxiliary/mapHabit";
 import { apiFetch } from "../auxiliary/apiFetch";
 import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
-import NotificationDropdown from "../notifications/NotificationDropdown";
 
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
@@ -24,6 +24,7 @@ import StatPill from "../components/StatPill";
 import HabitFormModal from "../components/HabitFormModal";
 import { itemVariants } from "../auxiliary/variants/itemVariant";
 import { containerVariants } from "../auxiliary/variants/containerVariants";
+import { useRouter } from "next/navigation";
 
 
 async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
@@ -57,6 +58,7 @@ async function deleteHabit(habitId: string): Promise<void> {
 
 
 export default function HabitsPage() {
+  const router = useRouter();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [activeTab, setActiveTab] = useState<HabitStatus>("active");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -126,6 +128,10 @@ export default function HabitsPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingHabitId(null);
+  };
+
+  const openLeaderboard = (habitId: string) => {
+    router.push(`/habits/${habitId}/leaderboard`);
   };
 
   const handleSubmitHabit = async (data: HabitFormData) => {
@@ -372,6 +378,14 @@ export default function HabitsPage() {
                               <Trash2 className="h-4 w-4" />
                               Delete
                             </button>
+
+                            <button
+                            onClick={() => void openLeaderboard(habit.id)}
+                            className="inline-flex items-center gap-2 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-2.5 text-sm font-medium text-cyan-300 transition hover:bg-cyan-400/15"
+                          >
+                            <Trophy className="h-4 w-4" />
+                            View Leaderboard
+                          </button>
                           </div>
                         </div>
                       </motion.div>
