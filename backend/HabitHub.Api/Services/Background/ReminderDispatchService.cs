@@ -123,6 +123,10 @@ public class ReminderDispatchService : BackgroundService
     private static bool IsReminderDueToday(DateTime reminderTime, DateTime nowUtc)
     {
         var reminderTimeUtc = ToUtc(reminderTime);
+
+        if (reminderTimeUtc.Date > nowUtc.Date)
+            return false;
+
         return nowUtc.TimeOfDay >= reminderTimeUtc.TimeOfDay;
     }
 
