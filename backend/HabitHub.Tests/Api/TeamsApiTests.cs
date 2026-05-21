@@ -2,6 +2,10 @@
 using System.Net.Http.Json;
 using HabitHub.Api.Contracts.Team;
 using HabitHub.Tests.Helpers;
+using HabitHub.Api.Data;
+using HabitHub.Api.Enums;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HabitHub.Tests.Api;
 
@@ -138,25 +142,50 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
     public async Task KickMember_AsCreator_SetsKickedAndRemovesFromVisibleMembers()
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
-        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Kickers" });
+
+        var create = await _client.PostAsJsonAsync(
+            "/api/teams",
+            new CreateTeamRequest { Name = "Kickers" });
+
         var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
-        var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
+
+        var inviteResponse = await _client.PostAsync(
+            $"/api/teams/{team!.HabitTeamId}/invite-codes",
+            content: null);
+
         var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
 
         var (joinerClient, joinerAuth) = await TestHelper.CreateSecondaryClientAsync(_factory);
-        await joinerClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
+
+        var joinResponse = await joinerClient.PostAsJsonAsync(
+            "/api/teams/join",
+            new JoinTeamRequest { Code = invite!.Code });
+
+        Assert.Equal(HttpStatusCode.OK, joinResponse.StatusCode);
 
         var kickResponse = await _client.PostAsync(
             $"/api/teams/{team.HabitTeamId}/members/{joinerAuth.UserId}/kick",
             content: null);
+
         Assert.Equal(HttpStatusCode.OK, kickResponse.StatusCode);
 
-        var fetched = await _client.GetFromJsonAsync<TeamResponse>($"/api/teams/{team.HabitTeamId}", TestHelper.JsonOptions);
-        var kickedRow = fetched!.Members.FirstOrDefault(m => m.MemberId == joinerAuth.UserId);
-        Assert.NotNull(kickedRow);
-        Assert.Equal(HabitHub.Api.Enums.MembershipStatus.Kicked, kickedRow!.Status);
-    }
+        var fetched = await _client.GetFromJsonAsync<TeamResponse>(
+            $"/api/teams/{team.HabitTeamId}",
+            TestHelper.JsonOptions);
 
+        Assert.NotNull(fetched);
+        Assert.DoesNotContain(fetched!.Members, m => m.MemberId == joinerAuth.UserId);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var kickedMembership = await db.Memberships.FirstOrDefaultAsync(m =>
+            m.HabitTeamId == team.HabitTeamId &&
+            m.MemberId == joinerAuth.UserId);
+
+        Assert.NotNull(kickedMembership);
+        Assert.Equal(MembershipStatus.Kicked, kickedMembership!.Status);
+    }
     [Fact]
     public async Task LeaveTeam_AsCreator_ReturnsConflict()
     {
