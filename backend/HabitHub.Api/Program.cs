@@ -49,6 +49,8 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddHostedService<AutoArchiveHabitsService>();
 
+builder.Services.AddHostedService<ReminderDispatchService>();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("frontend", policy =>

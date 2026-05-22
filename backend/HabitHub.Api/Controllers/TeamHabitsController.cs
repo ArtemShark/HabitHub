@@ -36,7 +36,10 @@ public class TeamHabitsController : ControllerBase
         if (team == null)
             return NotFound("Team not found");
 
-        var isMember = team.Memberships.Any(m => m.MemberId == userId.Value);
+        var isMember = team.CreatorId == userId.Value ||
+            team.Memberships.Any(m =>
+                m.MemberId == userId.Value &&
+                m.Status == MembershipStatus.Active);
         if (!isMember)
             return Forbid();
 
@@ -56,7 +59,8 @@ public class TeamHabitsController : ControllerBase
                 HabitState = h.HabitState,
                 ExpiryDate = h.ExpiryDate,
                 HabitType = h.HabitType,
-                Unit = h.Unit
+                Unit = h.Unit,
+            ReminderTime = h.ReminderTime
             })
             .ToListAsync();
 
@@ -112,7 +116,8 @@ public class TeamHabitsController : ControllerBase
             HabitState = habit.HabitState,
             ExpiryDate = habit.ExpiryDate,
             HabitType = habit.HabitType,
-            Unit = habit.Unit
+            Unit = habit.Unit,
+            ReminderTime = habit.ReminderTime
         };
 
         return Created($"/api/habits/{habit.HabitId}", response);

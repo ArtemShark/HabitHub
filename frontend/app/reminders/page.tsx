@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   BellOff,
@@ -13,16 +13,16 @@ import {
   X,
   ChevronRight,
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
+
 import { apiFetch } from "../auxiliary/apiFetch";
 import { getCurrentUserId } from "../auxiliary/getCurrentUserId";
 import Card from "../components/Card";
 import SectionTitle from "../components/SectionTitle";
 import { itemVariants } from "../auxiliary/variants/itemVariant";
 import { containerVariants } from "../auxiliary/variants/containerVariants";
-
 
 type ReminderDto = {
   reminderId: string;
@@ -31,68 +31,73 @@ type ReminderDto = {
   habitName: string;
   enabled: boolean;
   lastSentAt: string | null;
-  reminderTime: string | null; 
+  reminderTime: string | null;
 };
 
-const mockReminders: ReminderDto[] = [
-  {
-    reminderId: "1",
-    memberId: "member-1",
-    habitId: "habit-1",
-    habitName: "Drink Water",
-    enabled: true,
-    lastSentAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    reminderTime: new Date().toISOString(),
-  },
-  {
-    reminderId: "2",
-    memberId: "member-1",
-    habitId: "habit-2",
-    habitName: "Morning Workout",
-    enabled: true,
-    lastSentAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    reminderTime: new Date().toISOString(),
-  },
-  {
-    reminderId: "3",
-    memberId: "member-1",
-    habitId: "habit-3",
-    habitName: "Read 10 Pages",
-    enabled: false,
-    lastSentAt: null,
-    reminderTime: new Date().toISOString(),
-  },
-];
+type TeamDto = {
+  habitTeamId: string;
+  name: string;
+  creatorId: string;
+};
 
-type SetReminderPayload = {
+type HabitDto = {
   habitId: string;
-  enabled: boolean;
+  habitTeamId: string;
+  creatorId: string;
+  name: string;
+  habitState: string;
+  reminderTime?: string | null;
 };
 
+type ReminderHabitOption = {
+  id: string;
+  name: string;
+  teamId: string;
+  reminderTime?: string | null;
+};
+
+async function fetchMyReminders(): Promise<ReminderDto[]> {
+  return apiFetch<ReminderDto[]>("/api/reminders/my", { method: "GET" });
+}
+
+async function fetchTeams(): Promise<TeamDto[]> {
+  return apiFetch<TeamDto[]>("/api/teams", { method: "GET" });
+}
+
+async function fetchTeamHabits(teamId: string): Promise<HabitDto[]> {
+  return apiFetch<HabitDto[]>(`/api/teams/${teamId}/habits?state=Active`, {
+    method: "GET",
+  });
+}
 
 function formatLastSent(iso: string | null): string {
   if (!iso) return "Never sent";
-  const d = new Date(iso);
+
+  const date = new Date(iso);
   const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffH = Math.floor(diffMs / 3_600_000);
-  if (diffH < 1) return "Less than an hour ago";
-  if (diffH < 24) return `${diffH}h ago`;
-  const diffD = Math.floor(diffH / 24);
-  if (diffD === 1) return "Yesterday";
-  return `${diffD} days ago`;
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / 3_600_000);
+
+  if (diffHours < 1) return "Less than an hour ago";
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "Yesterday";
+
+  return `${diffDays} days ago`;
 }
 
 function formatReminderTime(iso: string | null): string {
   if (!iso) return "No time set";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
-  }
-}
 
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function ReminderToggle({
   enabled,
@@ -112,17 +117,18 @@ function ReminderToggle({
         enabled
           ? "border-indigo-500 bg-indigo-500/30"
           : "border-white/15 bg-white/5"
-      }`}
+      } disabled:cursor-not-allowed disabled:opacity-70`}
     >
       <motion.span
         layout
         transition={{ type: "spring", stiffness: 500, damping: 35 }}
-        className={`pointer-events-none inline-block h-4 w-4 rounded-full shadow-lg ring-0 transition-transform ${
+        className={`pointer-events-none inline-block h-4 w-4 self-center rounded-full shadow-lg ring-0 transition-transform ${
           enabled
             ? "translate-x-5 bg-indigo-400"
             : "translate-x-0.5 bg-white/30"
-        } self-center`}
+        }`}
       />
+
       {loading && (
         <span className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="h-3 w-3 animate-spin text-white/60" />
@@ -137,18 +143,25 @@ function ReminderCard({
   onToggle,
 }: {
   reminder: ReminderDto;
-  onToggle: (id: string, enabled: boolean) => Promise<void>;
+  onToggle: (habitId: string, enabled: boolean) => Promise<void>;
 }) {
   const [toggling, setToggling] = useState(false);
   const [optimisticEnabled, setOptimisticEnabled] = useState(reminder.enabled);
 
+  useEffect(() => {
+    setOptimisticEnabled(reminder.enabled);
+  }, [reminder.enabled]);
+
   const handleToggle = async () => {
+    const nextEnabled = !optimisticEnabled;
+
     setToggling(true);
-    setOptimisticEnabled((prev) => !prev);
+    setOptimisticEnabled(nextEnabled);
+
     try {
-      await onToggle(reminder.habitId, !optimisticEnabled);
+      await onToggle(reminder.habitId, nextEnabled);
     } catch {
-      setOptimisticEnabled((prev) => !prev);
+      setOptimisticEnabled(!nextEnabled);
     } finally {
       setToggling(false);
     }
@@ -219,6 +232,7 @@ function ReminderCard({
           >
             {optimisticEnabled ? "On" : "Off"}
           </span>
+
           <ReminderToggle
             enabled={optimisticEnabled}
             onToggle={handleToggle}
@@ -230,23 +244,28 @@ function ReminderCard({
   );
 }
 
-function EmptyState() {
+function EmptyState({ canSetReminder }: { canSetReminder: boolean }) {
   return (
     <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-4 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500/10">
         <Bell className="h-6 w-6 text-indigo-300/60" />
       </div>
+
       <div>
         <p className="font-medium text-white/60">No reminders yet</p>
+        <p className="mt-2 max-w-sm text-sm text-white/35">
+          {canSetReminder
+            ? "Use Set Reminder to configure a reminder time for one of your active team habits."
+            : "Your team creator has not configured reminders for your active habits yet."}
+        </p>
       </div>
     </div>
   );
 }
 
-
 function StatsStrip({ reminders }: { reminders: ReminderDto[] }) {
   const total = reminders.length;
-  const active = reminders.filter((r) => r.enabled).length;
+  const active = reminders.filter((reminder) => reminder.enabled).length;
   const inactive = total - active;
 
   const stats = [
@@ -257,20 +276,19 @@ function StatsStrip({ reminders }: { reminders: ReminderDto[] }) {
 
   return (
     <div className="mb-5 grid grid-cols-3 gap-3">
-      {stats.map((s) => (
+      {stats.map((stat) => (
         <motion.div
-          key={s.label}
+          key={stat.label}
           variants={itemVariants}
           className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-center"
         >
-          <p className={`text-2xl font-semibold ${s.color}`}>{s.value}</p>
-          <p className="mt-0.5 text-xs text-white/40">{s.label}</p>
+          <p className={`text-2xl font-semibold ${stat.color}`}>{stat.value}</p>
+          <p className="mt-0.5 text-xs text-white/40">{stat.label}</p>
         </motion.div>
       ))}
     </div>
   );
 }
-
 
 type SetReminderModalProps = {
   open: boolean;
@@ -279,26 +297,57 @@ type SetReminderModalProps = {
   onSubmit: (habitId: string, time: string) => Promise<void>;
 };
 
-function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalProps) {
-  const [habitId, setHabitId] = useState(habits[0]?.id ?? "");
+function SetReminderModal({
+  open,
+  onClose,
+  habits,
+  onSubmit,
+}: SetReminderModalProps) {
+  const [habitId, setHabitId] = useState("");
   const [time, setTime] = useState("13:20");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+
+    setSuccess(false);
+    setSubmitError("");
+
+    if (!habitId && habits.length > 0) {
+      setHabitId(habits[0].id);
+    }
+
+    if (habitId && habits.every((habit) => habit.id !== habitId)) {
+      setHabitId(habits[0]?.id ?? "");
+    }
+  }, [open, habits, habitId]);
 
   const handleSubmit = async () => {
     if (!habitId || !time) return;
+
     setSubmitting(true);
+    setSubmitError("");
+
     try {
       const [hours, minutes] = time.split(":").map(Number);
-      const dt = new Date();
-      dt.setHours(hours, minutes, 0, 0);
-      await onSubmit(habitId, dt.toISOString());
+      const reminderDate = new Date();
+
+      reminderDate.setHours(hours, minutes, 0, 0);
+
+      await onSubmit(habitId, reminderDate.toISOString());
+
       setSuccess(true);
+
       setTimeout(() => {
         setSuccess(false);
         onClose();
       }, 900);
-    } catch {
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error ? err.message : "Failed to set reminder."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -319,7 +368,7 @@ function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalP
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
             transition={{ duration: 0.2 }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
             className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950/95 p-6 shadow-2xl"
           >
             <div className="mb-6 flex items-start justify-between">
@@ -328,13 +377,17 @@ function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalP
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/15">
                     <Bell className="h-4 w-4 text-indigo-300" />
                   </div>
+
                   <h3 className="text-xl font-semibold text-white">Set Reminder</h3>
                 </div>
+
                 <p className="text-sm text-white/45">
                   Configure when members get notified for a habit.
                 </p>
               </div>
+
               <button
+                type="button"
                 onClick={onClose}
                 className="rounded-full p-2 text-white/50 transition hover:bg-white/10 hover:text-white"
               >
@@ -342,17 +395,24 @@ function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalP
               </button>
             </div>
 
+            {submitError && (
+              <div className="mb-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                {submitError}
+              </div>
+            )}
+
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-sm text-white/60">Habit</label>
+
                 <select
                   value={habitId}
-                  onChange={(e) => setHabitId(e.target.value)}
+                  onChange={(event) => setHabitId(event.target.value)}
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-indigo-500/50"
                 >
-                  {habits.map((h) => (
-                    <option key={h.id} value={h.id} className="bg-slate-900">
-                      {h.name}
+                  {habits.map((habit) => (
+                    <option key={habit.id} value={habit.id} className="bg-slate-900">
+                      {habit.name}
                     </option>
                   ))}
                 </select>
@@ -360,6 +420,7 @@ function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalP
 
               <div>
                 <label className="mb-2 block text-sm text-white/60">Frequency</label>
+
                 <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <Sparkles className="h-4 w-4 text-indigo-300" />
                   <span className="text-sm text-white/70">Run all month</span>
@@ -368,15 +429,17 @@ function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalP
 
               <div>
                 <label className="mb-2 block text-sm text-white/60">Reminder time</label>
+
                 <div className="flex gap-3">
                   <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                     <Clock className="h-4 w-4 text-white/40" />
                     <span className="text-sm text-white/60">Time</span>
                   </div>
+
                   <input
                     type="time"
                     value={time}
-                    onChange={(e) => setTime(e.target.value)}
+                    onChange={(event) => setTime(event.target.value)}
                     className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-white outline-none focus:border-indigo-500/50 [color-scheme:dark]"
                   />
                 </div>
@@ -385,15 +448,18 @@ function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalP
 
             <div className="mt-6 flex gap-3">
               <button
+                type="button"
                 onClick={onClose}
                 className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white/70 transition hover:bg-white/10"
               >
                 Cancel
               </button>
+
               <button
+                type="button"
                 onClick={handleSubmit}
-                disabled={submitting || success}
-                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-indigo-500 px-4 py-3 font-medium text-white transition hover:bg-indigo-400 disabled:opacity-70"
+                disabled={submitting || success || !habitId}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-indigo-500 px-4 py-3 font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {success ? (
                   <>
@@ -414,9 +480,9 @@ function SetReminderModal({ open, onClose, habits, onSubmit }: SetReminderModalP
   );
 }
 
-
 export default function RemindersPage() {
   const [reminders, setReminders] = useState<ReminderDto[]>([]);
+  const [manageableHabits, setManageableHabits] = useState<ReminderHabitOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -424,17 +490,51 @@ export default function RemindersPage() {
 
   const currentUserId = useMemo(() => getCurrentUserId(), []);
   const hasFetched = useRef(false);
-    useEffect(() => {
+
+  const loadReminderData = useCallback(async () => {
+    if (!currentUserId) {
+      setError("Could not determine current user.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+    setError("");
 
-    const timer = setTimeout(() => {
-        setReminders(mockReminders);
-        setLoading(false);
-    }, 600);
+    try {
+      const data = await fetchMyReminders();
+      setReminders(data);
 
-    return () => clearTimeout(timer);
-    }, []);
-  
+      const teams = await fetchTeams();
+      const creatorTeams = teams.filter((team) => team.creatorId === currentUserId);
+
+      const habitsByTeam = await Promise.all(
+        creatorTeams.map(async (team) => {
+          const habits = await fetchTeamHabits(team.habitTeamId);
+
+          return habits.map((habit) => ({
+            id: habit.habitId,
+            name: habit.name,
+            teamId: habit.habitTeamId,
+            reminderTime: habit.reminderTime ?? null,
+          }));
+        })
+      );
+
+      setManageableHabits(habitsByTeam.flat());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load reminders.");
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
+    void loadReminderData();
+  }, [loadReminderData]);
 
   const handleToggle = async (habitId: string, enabled: boolean) => {
     await apiFetch(`/api/habits/${habitId}/my-reminder`, {
@@ -442,8 +542,11 @@ export default function RemindersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
     });
+
     setReminders((prev) =>
-      prev.map((r) => (r.habitId === habitId ? { ...r, enabled } : r))
+      prev.map((reminder) =>
+        reminder.habitId === habitId ? { ...reminder, enabled } : reminder
+      )
     );
   };
 
@@ -453,28 +556,28 @@ export default function RemindersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reminderTime: time }),
     });
-    setReminders((prev) =>
-      prev.map((r) => (r.habitId === habitId ? { ...r, reminderTime: time } : r))
-    );
+
+    await loadReminderData();
   };
 
   const filtered = useMemo(() => {
-    if (filter === "active") return reminders.filter((r) => r.enabled);
-    if (filter === "muted") return reminders.filter((r) => !r.enabled);
+    if (filter === "active") return reminders.filter((reminder) => reminder.enabled);
+    if (filter === "muted") return reminders.filter((reminder) => !reminder.enabled);
     return reminders;
   }, [reminders, filter]);
 
   const habitOptions = useMemo(
-    () => reminders.map((r) => ({ id: r.habitId, name: r.habitName })),
-    [reminders]
+    () => manageableHabits.map((habit) => ({ id: habit.id, name: habit.name })),
+    [manageableHabits]
   );
+
+  const canSetReminder = habitOptions.length > 0;
 
   const filters: { key: typeof filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "active", label: "Active" },
     { key: "muted", label: "Muted" },
   ];
-
   return (
     <main className="min-h-screen overflow-hidden bg-[#07090F] px-4 py-6 text-white sm:px-6 md:px-8 md:py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.16),transparent_28%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(244,63,94,0.10),transparent_22%)]" />
@@ -487,13 +590,13 @@ export default function RemindersPage() {
         className="relative mx-auto max-w-4xl rounded-[36px] border border-white/10 bg-black/35 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:p-5 md:rounded-[42px] md:p-7"
       >
         <div className="mb-6 border-b border-white/10 pb-5">
-        <Link
+          <Link
             href="/dashboard"
             className="mb-4 inline-flex items-center gap-2 text-sm text-white/45 transition hover:text-white"
-        >
+          >
             <ArrowLeft className="h-4 w-4" />
             Back to dashboard
-        </Link>
+          </Link>
         </div>
 
         <motion.div
@@ -510,12 +613,9 @@ export default function RemindersPage() {
 
           <motion.div variants={itemVariants}>
             <div className="mb-3 flex items-center justify-between">
-              <SectionTitle
-                icon={<Bell className="h-5 w-5" />}
-                title="Your Reminders"
-              />
+              <SectionTitle icon={<Bell className="h-5 w-5" />} title="Your Reminders" />
 
-              {habitOptions.length > 0 && (
+              {canSetReminder && (
                 <button
                   type="button"
                   onClick={() => setModalOpen(true)}
@@ -531,18 +631,18 @@ export default function RemindersPage() {
             <Card className="min-h-[340px]">
               {!loading && !error && reminders.length > 0 && (
                 <div className="mb-4 flex gap-2">
-                  {filters.map((f) => (
+                  {filters.map((filterOption) => (
                     <button
-                      key={f.key}
+                      key={filterOption.key}
                       type="button"
-                      onClick={() => setFilter(f.key)}
+                      onClick={() => setFilter(filterOption.key)}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
-                        filter === f.key
+                        filter === filterOption.key
                           ? "bg-indigo-500/20 text-indigo-300"
                           : "text-white/40 hover:text-white/70"
                       }`}
                     >
-                      {f.label}
+                      {filterOption.label}
                     </button>
                   ))}
                 </div>
@@ -559,7 +659,7 @@ export default function RemindersPage() {
                   <p className="text-sm text-rose-300/80">{error}</p>
                 </div>
               ) : filtered.length === 0 ? (
-                <EmptyState />
+                <EmptyState canSetReminder={canSetReminder} />
               ) : (
                 <motion.div
                   variants={containerVariants}
@@ -580,7 +680,6 @@ export default function RemindersPage() {
               )}
             </Card>
           </motion.div>
-
         </motion.div>
       </motion.div>
 

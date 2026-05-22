@@ -27,5 +27,6 @@ export function mapHabit(dto: HabitResponseDto): Habit {
     unit: dto.unit ?? undefined,
     endDate: dto.expiryDate ?? undefined,
     status: mapHabitState(dto.habitState),
+    reminderTime: dto.reminderTime ?? undefined,
   };
 }

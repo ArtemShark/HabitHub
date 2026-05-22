@@ -76,7 +76,8 @@ public class HabitsController : ControllerBase
             HabitState = habit.HabitState,
             ExpiryDate = habit.ExpiryDate,
             HabitType = habit.HabitType,
-            Unit = habit.Unit
+            Unit = habit.Unit,
+            ReminderTime = habit.ReminderTime
         };
 
         return Ok(response);
@@ -91,6 +92,7 @@ public class HabitsController : ControllerBase
 
         var habit = await _context.Habits
             .Include(h => h.Team)
+            .Include(h => h.Reminders)
             .FirstOrDefaultAsync(h => h.HabitId == habitId);
 
         if (habit == null)
@@ -111,13 +113,20 @@ public class HabitsController : ControllerBase
                 HabitState = habit.HabitState,
                 ExpiryDate = habit.ExpiryDate,
                 HabitType = habit.HabitType,
-                Unit = habit.Unit
+                Unit = habit.Unit,
+            ReminderTime = habit.ReminderTime
             };
 
             return Ok(archivedResponse);
         }
 
         habit.HabitState = HabitState.Archived;
+
+        foreach (var reminder in habit.Reminders)
+        {
+            reminder.Enabled = false;
+        }
+
         await _context.SaveChangesAsync();
 
         var response = new HabitResponse
@@ -130,7 +139,8 @@ public class HabitsController : ControllerBase
             HabitState = habit.HabitState,
             ExpiryDate = habit.ExpiryDate,
             HabitType = habit.HabitType,
-            Unit = habit.Unit
+            Unit = habit.Unit,
+            ReminderTime = habit.ReminderTime
         };
 
         return Ok(response);
@@ -170,7 +180,9 @@ public class HabitsController : ControllerBase
             return Forbid();
 
         var habits = await _context.Habits
-            .Where(h => h.Team.Memberships.Any(m => m.MemberId == memberId))
+            .Where(h => h.Team.Memberships.Any(m =>
+                m.MemberId == memberId &&
+                m.Status == MembershipStatus.Active))
             .Select(h => new HabitResponse
             {
                 HabitId = h.HabitId,
@@ -181,7 +193,8 @@ public class HabitsController : ControllerBase
                 HabitState = h.HabitState,
                 ExpiryDate = h.ExpiryDate,
                 HabitType = h.HabitType,
-                Unit = h.Unit
+                Unit = h.Unit,
+            ReminderTime = h.ReminderTime
             })
             .ToListAsync();
 
@@ -327,9 +340,13 @@ public class HabitsController : ControllerBase
         if (habit == null)
             return NotFound("Habit not found");
 
-        if (!habit.Team.Memberships.Any(m => m.MemberId == userId.Value))
+        if (!habit.Team.Memberships.Any(m =>
+                m.MemberId == userId.Value &&
+                m.Status == MembershipStatus.Active))
+        {
             return Forbid();
-        
+        }
+
         if (date.HasValue)
         {
             var startOfDayUtc = DateTime.SpecifyKind(

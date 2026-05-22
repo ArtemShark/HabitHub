@@ -18,4 +18,5 @@ public class Habit
     public string? Unit { get; set; }
     public ICollection<HabitEntry> Entries { get; set; } = new List<HabitEntry>();
     public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
+    public DateTime? ReminderTime { get; set; }
 }

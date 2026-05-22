@@ -16,4 +16,5 @@ public class HabitResponse
     public DateTime ExpiryDate { get; set; }
     public HabitType HabitType { get; set; }
     public string? Unit { get; set; }
+    public DateTime? ReminderTime { get; set; }
 }

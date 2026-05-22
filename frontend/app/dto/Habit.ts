@@ -14,6 +14,7 @@ export type HabitResponseDto = {
   expiryDate?: string | null;
   habitType: HabitType;
   unit?: string | null;
+  reminderTime?: string | null;
 };
 
 export type UpdateHabitRequestDto = {
@@ -34,6 +35,7 @@ export type Habit = {
   unit?: string;
   endDate?: string;
   status: HabitStatus;
+  reminderTime?: string;
 };
 
 export type HabitFormData = {
