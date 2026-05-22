@@ -237,17 +237,22 @@ public class ReminderDispatchServiceTests
         var member = TestHelper.SeedMember(db);
         var team = TestHelper.SeedTeam(db, creator.MemberId, extraMemberIds: new[] { member.MemberId });
 
+        var now = DateTime.UtcNow;
+
         var habit = TestHelper.SeedHabit(db, team.HabitTeamId, creator.MemberId);
-        habit.ReminderTime = DateTime.UtcNow.AddMinutes(-5);
+        habit.ReminderTime = now.AddMinutes(-5);
         await db.SaveChangesAsync();
 
-        var alreadySentAt = DateTime.UtcNow.AddHours(-1);
+        var alreadySentAtToday = DateTime.SpecifyKind(
+            now.Date.AddMinutes(1),
+            DateTimeKind.Utc);
+
         var reminder = SeedReminder(
             db,
             habit.HabitId,
             member.MemberId,
             enabled: true,
-            lastSentAt: alreadySentAt);
+            lastSentAt: alreadySentAtToday);
 
         await service.DispatchDueRemindersAsync();
 
@@ -257,7 +262,7 @@ public class ReminderDispatchServiceTests
 
         var updatedReminder = await db.Reminders.FindAsync(reminder.ReminderId);
         Assert.NotNull(updatedReminder);
-        Assert.Equal(alreadySentAt, updatedReminder!.LastSentAt);
+        Assert.Equal(alreadySentAtToday, updatedReminder!.LastSentAt);
     }
 
     [Fact]
