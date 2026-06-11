@@ -47,11 +47,10 @@ public class ReminderDispatchService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var now = DateTime.UtcNow;
-        var startOfToday = now.Date;
-        var endOfToday = startOfToday.AddDays(1);
+        var nowUtc = DateTime.UtcNow;
 
         var reminders = await db.Reminders
+            .Include(r => r.Member)
             .Include(r => r.Habit)
                 .ThenInclude(h => h.Team)
                     .ThenInclude(t => t.Memberships)
@@ -59,7 +58,7 @@ public class ReminderDispatchService : BackgroundService
                 r.Enabled &&
                 r.Habit.HabitState == HabitState.Active &&
                 r.Habit.ReminderTime != null &&
-                r.Habit.ExpiryDate > now)
+                r.Habit.ExpiryDate > nowUtc)
             .ToListAsync(cancellationToken);
 
         var sentCount = 0;
@@ -80,17 +79,23 @@ public class ReminderDispatchService : BackgroundService
                 continue;
             }
 
-            if (!IsReminderDueToday(habit.ReminderTime!.Value, now))
+            var memberTimeZone = GetMemberTimeZone(reminder.Member.Timezone);
+            var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, memberTimeZone);
+
+            if (!IsReminderDueToday(habit.ReminderTime!.Value, nowLocal))
                 continue;
 
-            if (WasReminderAlreadySentToday(reminder.LastSentAt, now))
+            if (WasReminderAlreadySentToday(reminder.LastSentAt, nowLocal, memberTimeZone))
                 continue;
+
+            var startOfTodayUtc = TimeZoneInfo.ConvertTimeToUtc(nowLocal.Date, memberTimeZone);
+            var endOfTodayUtc = TimeZoneInfo.ConvertTimeToUtc(nowLocal.Date.AddDays(1), memberTimeZone);
 
             var alreadyLoggedToday = await db.HabitEntries.AnyAsync(e =>
                     e.HabitId == reminder.HabitId &&
                     e.MemberId == reminder.MemberId &&
-                    e.Date >= startOfToday &&
-                    e.Date < endOfToday,
+                    e.Date >= startOfTodayUtc &&
+                    e.Date < endOfTodayUtc,
                 cancellationToken);
 
             if (alreadyLoggedToday)
@@ -101,11 +106,11 @@ public class ReminderDispatchService : BackgroundService
                 NotificationId = Guid.NewGuid(),
                 MemberId = reminder.MemberId,
                 Content = $"Reminder: it is time to log \"{habit.Name}\".",
-                CreatedAt = now,
+                CreatedAt = nowUtc,
                 IsRead = false
             });
 
-            reminder.LastSentAt = now;
+            reminder.LastSentAt = nowUtc;
             sentCount++;
         }
 
@@ -120,23 +125,52 @@ public class ReminderDispatchService : BackgroundService
             disabledInactiveCount);
     }
 
-    private static bool IsReminderDueToday(DateTime reminderTime, DateTime nowUtc)
+    private static bool IsReminderDueToday(DateTime reminderTime, DateTime nowLocal)
     {
-        var reminderTimeUtc = ToUtc(reminderTime);
+        var reminderWallClockTime = ToReminderWallClockTime(reminderTime);
 
-        if (reminderTimeUtc.Date > nowUtc.Date)
+        if (reminderWallClockTime.Date > nowLocal.Date)
             return false;
 
-        return nowUtc.TimeOfDay >= reminderTimeUtc.TimeOfDay;
+        return nowLocal.TimeOfDay >= reminderWallClockTime.TimeOfDay;
     }
 
-    private static bool WasReminderAlreadySentToday(DateTime lastSentAt, DateTime nowUtc)
+    private static bool WasReminderAlreadySentToday(
+        DateTime lastSentAt,
+        DateTime nowLocal,
+        TimeZoneInfo memberTimeZone)
     {
         if (lastSentAt.Year <= 1)
             return false;
 
         var lastSentAtUtc = ToUtc(lastSentAt);
-        return lastSentAtUtc.Date == nowUtc.Date;
+        var lastSentAtLocal = TimeZoneInfo.ConvertTimeFromUtc(lastSentAtUtc, memberTimeZone);
+
+        return lastSentAtLocal.Date == nowLocal.Date;
+    }
+
+    private static TimeZoneInfo GetMemberTimeZone(string? timezone)
+    {
+        if (string.IsNullOrWhiteSpace(timezone))
+            return TimeZoneInfo.Utc;
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timezone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+    }
+
+    private static DateTime ToReminderWallClockTime(DateTime value)
+    {
+        return DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
     }
 
     private static DateTime ToUtc(DateTime value)

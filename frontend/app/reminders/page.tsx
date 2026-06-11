@@ -99,6 +99,21 @@ function formatReminderTime(iso: string | null): string {
   });
 }
 
+function buildLocalReminderTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  const reminderDate = new Date();
+
+  reminderDate.setHours(hours, minutes, 0, 0);
+
+  const year = reminderDate.getFullYear();
+  const month = String(reminderDate.getMonth() + 1).padStart(2, "0");
+  const day = String(reminderDate.getDate()).padStart(2, "0");
+  const hour = String(hours).padStart(2, "0");
+  const minute = String(minutes).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hour}:${minute}:00`;
+}
+
 function ReminderToggle({
   enabled,
   onToggle,
@@ -331,12 +346,7 @@ function SetReminderModal({
     setSubmitError("");
 
     try {
-      const [hours, minutes] = time.split(":").map(Number);
-      const reminderDate = new Date();
-
-      reminderDate.setHours(hours, minutes, 0, 0);
-
-      await onSubmit(habitId, reminderDate.toISOString());
+      await onSubmit(habitId, buildLocalReminderTime(time));
 
       setSuccess(true);
 

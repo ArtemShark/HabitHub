@@ -273,7 +273,7 @@ export default function HabitHubLoginPage() {
                   </label>
 
                   <Link
-                    href="#"
+                    href="/forgot-password"
                     className="font-medium text-emerald-300/85 transition hover:text-emerald-200"
                   >
                     Forgot password?

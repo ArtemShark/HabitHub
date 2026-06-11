@@ -22,39 +22,61 @@ public class SessionActivityMiddleware
 
     public async Task InvokeAsync(HttpContext context, AppDbContext db)
     {
-        await _next(context);
-
         if (context.User.Identity?.IsAuthenticated != true)
+        {
+            await _next(context);
             return;
+        }
 
         var sessionIdClaim = context.User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
-        if (string.IsNullOrEmpty(sessionIdClaim) ||
+        if (string.IsNullOrWhiteSpace(sessionIdClaim) ||
             !Guid.TryParse(sessionIdClaim, out var sessionId))
         {
+            await RejectInactiveSessionAsync(context);
             return;
         }
 
         try
         {
-            var session = await db.Sessions.FirstOrDefaultAsync(s =>
-                s.SessionId == sessionId && s.State == SessionState.Active);
-
-            if (session == null)
-                return;
-
             var now = DateTime.UtcNow;
-            if ((now - session.LastActiveAt).TotalSeconds < ThrottleSeconds)
-                return;
+            var session = await db.Sessions.FirstOrDefaultAsync(s => s.SessionId == sessionId);
 
-            session.LastActiveAt = now;
-            await db.SaveChangesAsync();
+            if (session == null ||
+                session.State != SessionState.Active ||
+                session.ExpiresAt <= now)
+            {
+                await RejectInactiveSessionAsync(context);
+                return;
+            }
+
+            if ((now - session.LastActiveAt).TotalSeconds >= ThrottleSeconds)
+            {
+                session.LastActiveAt = now;
+                await db.SaveChangesAsync();
+            }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(
                 ex,
-                "Failed to update LastActiveAt for session {SessionId}",
+                "Failed to validate or update session {SessionId}",
                 sessionId);
+
+            await RejectInactiveSessionAsync(context);
+            return;
         }
+
+        await _next(context);
+    }
+
+    private static async Task RejectInactiveSessionAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "session-inactive",
+            message = "Your session is no longer active. Please log in again."
+        });
     }
 }

@@ -445,7 +445,7 @@ describe("RemindersPage", () => {
     expect(await screen.findByText("Failed to load reminder data.")).toBeInTheDocument();
   });
 
-  it("shows set reminder submit error when backend rejects creator request", async () => {
+  it("shows set reminder submit friendly error when backend rejects creator request", async () => {
     mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -474,6 +474,9 @@ describe("RemindersPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: /set reminder/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit/i }));
 
-    expect(await screen.findByText("forbidden")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/you do not have permission to perform this action/i)
+    ).toBeInTheDocument();
   });
+
 });

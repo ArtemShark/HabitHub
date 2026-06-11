@@ -44,14 +44,17 @@ public class LeaderboardController : ControllerBase
             m.Status == MembershipStatus.Active);
         if (!isMember)
             return Forbid();
-        var members = habit.Entries
+        var loggedEntries = habit.Entries
+            .Where(e => e.Status == EntryStatus.Logged);
+
+        var members = loggedEntries
             .GroupBy(e => e.Member)
             .Select(g => new LeaderboardMemberResponse
             {
                 MemberId = g.Key.MemberId,
                 Username = g.Key.Name,
                 TotalProgress = g.Sum(e => habit.HabitType == HabitType.Binary ? 1 : e.Value ?? 0),
-                Rank = 0 // Rank will be calculated after sorting
+                Rank = 0
             })
             .OrderByDescending(m => m.TotalProgress)
             .ToList();

@@ -57,6 +57,69 @@ public class AuthController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, response);
     }
 
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) ||
+            string.IsNullOrWhiteSpace(request.NewPassword) ||
+            string.IsNullOrWhiteSpace(request.ConfirmPassword))
+        {
+            return BadRequest(new
+            {
+                error = "validation-error",
+                message = "Email, new password and confirmation are required."
+            });
+        }
+
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            return BadRequest(new
+            {
+                error = "validation-error",
+                message = "Password confirmation does not match."
+            });
+        }
+
+        if (request.NewPassword.Length < 6)
+        {
+            return BadRequest(new
+            {
+                error = "validation-error",
+                message = "Password must be at least 6 characters long."
+            });
+        }
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var member = await _dbContext.Members
+            .Include(m => m.Sessions)
+            .FirstOrDefaultAsync(m => m.Email == email, cancellationToken);
+
+        if (member == null)
+        {
+            return NotFound(new
+            {
+                error = "not-found",
+                message = "No account with this email was found."
+            });
+        }
+
+        member.PasswordHash = _passwordHasher.HashPassword(member, request.NewPassword);
+
+        foreach (var session in member.Sessions.Where(s => s.State == SessionState.Active))
+        {
+            session.State = SessionState.Invalidated;
+            session.ExpiresAt = DateTime.UtcNow;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            message = "Password reset successfully. Please log in with your new password."
+        });
+    }
+
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
