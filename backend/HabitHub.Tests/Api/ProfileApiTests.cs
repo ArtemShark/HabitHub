@@ -130,7 +130,7 @@ public class ProfileApiTests : IClassFixture<CustomWebApplicationFactory>
             Email = "changeme@example.com",
             Password = "Password123!"
         });
-        Assert.Equal(HttpStatusCode.BadRequest, oldLogin.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, oldLogin.StatusCode);
 
         var newLoginClient = _factory.CreateClient();
         var newLogin = await newLoginClient.PostAsJsonAsync("/api/auth/login", new LoginRequest

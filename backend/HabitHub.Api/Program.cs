@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.IO;
 using HabitHub.Api.Services.Mail;
+using HabitHub.Api.Middleware;
 
 LoadDotEnv();
 
@@ -87,19 +88,10 @@ app.UseCors("frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.UseMiddleware<SessionActivityMiddleware>();
+
 app.MapControllers();
 app.MapGet("/", () => "HabitHub backend is running");
-app.MapGet("/api/email/config", (IConfiguration configuration) =>
-{
-    return Results.Ok(new
-    {
-        SmtpEnabled = configuration["SMTP_ENABLED"],
-        SmtpHost = configuration["Email:SmtpHost"],
-        SmtpPort = configuration["Email:SmtpPort"],
-        SmtpUser = configuration["Email:Username"],
-        From = configuration["Email:From"]
-    });
-});
 
 app.Run();
 

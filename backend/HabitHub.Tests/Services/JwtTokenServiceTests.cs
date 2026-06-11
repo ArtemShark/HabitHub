@@ -29,7 +29,7 @@ public class JwtTokenServiceTests
         var service = CreateService();
         var member = new Member { MemberId = Guid.NewGuid(), Email = "test@example.com", Name = "testuser" };
 
-        var (token, _) = service.CreateToken(member);
+        var (token, _) = service.CreateToken(member, Guid.NewGuid());
 
         Assert.NotNull(token);
         Assert.NotEmpty(token);
@@ -41,7 +41,7 @@ public class JwtTokenServiceTests
         var service = CreateService();
         var member = new Member { MemberId = Guid.NewGuid(), Email = "test@example.com", Name = "testuser" };
 
-        var (token, _) = service.CreateToken(member);
+        var (token, _) = service.CreateToken(member, Guid.NewGuid());
 
         var handler = new JwtSecurityTokenHandler();
         Assert.True(handler.CanReadToken(token));
@@ -54,7 +54,7 @@ public class JwtTokenServiceTests
         var memberId = Guid.NewGuid();
         var member = new Member { MemberId = memberId, Email = "test@example.com", Name = "testuser" };
 
-        var (token, _) = service.CreateToken(member);
+        var (token, _) = service.CreateToken(member, Guid.NewGuid());
 
         var handler = new JwtSecurityTokenHandler();
         var jwt = handler.ReadJwtToken(token);
@@ -66,13 +66,29 @@ public class JwtTokenServiceTests
     }
 
     [Fact]
+    public void CreateToken_EmbedsSessionIdAsJtiClaim()
+    {
+        var service = CreateService();
+        var member = new Member { MemberId = Guid.NewGuid(), Email = "test@example.com", Name = "testuser" };
+        var sessionId = Guid.NewGuid();
+
+        var (token, _) = service.CreateToken(member, sessionId);
+
+        var handler = new JwtSecurityTokenHandler();
+        var jwt = handler.ReadJwtToken(token);
+
+        var jti = jwt.Claims.First(c => c.Type == JwtRegisteredClaimNames.Jti).Value;
+        Assert.Equal(sessionId.ToString(), jti);
+    }
+
+    [Fact]
     public void CreateToken_ExpiresAtCorrectTime()
     {
         var service = CreateService(expiryMinutes: 30);
         var member = new Member { MemberId = Guid.NewGuid(), Email = "test@example.com", Name = "testuser" };
 
         var timeBefore = DateTime.UtcNow;
-        var (_, expiresAt) = service.CreateToken(member);
+        var (_, expiresAt) = service.CreateToken(member, Guid.NewGuid());
 
         Assert.InRange(expiresAt, timeBefore.AddMinutes(30), DateTime.UtcNow.AddMinutes(30).AddSeconds(5));
     }
@@ -92,6 +108,6 @@ public class JwtTokenServiceTests
         var service = new JwtTokenService(config);
         var member = new Member { MemberId = Guid.NewGuid(), Email = "test@example.com", Name = "testuser" };
 
-        Assert.Throws<InvalidOperationException>(() => service.CreateToken(member));
+        Assert.Throws<InvalidOperationException>(() => service.CreateToken(member, Guid.NewGuid()));
     }
 }

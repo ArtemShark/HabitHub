@@ -4,5 +4,5 @@ namespace HabitHub.Api.Services;
 
 public interface IJwtTokenService
 {
-    (string Token, DateTime ExpiresAtUtc) CreateToken(Member member);
+    (string Token, DateTime ExpiresAtUtc) CreateToken(Member member, Guid sessionId);
 }
