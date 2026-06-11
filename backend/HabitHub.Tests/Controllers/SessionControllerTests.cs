@@ -45,7 +45,7 @@ public class SessionControllerTests
             MemberId = userId,
             CreatedAt = DateTime.UtcNow.AddMinutes(-10),
             LastActiveAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddHours(1),
+            ExpiresAt = DateTime.UtcNow.AddDays(30),
             Device = "Chrome on Windows",
             IPAddress = "127.0.0.1",
             State = SessionState.Active
@@ -59,7 +59,7 @@ public class SessionControllerTests
                 MemberId = userId,
                 CreatedAt = DateTime.UtcNow,
                 LastActiveAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddHours(1),
+                ExpiresAt = DateTime.UtcNow.AddDays(30),
                 Device = "Old device",
                 IPAddress = "127.0.0.2",
                 State = SessionState.Invalidated
@@ -68,8 +68,8 @@ public class SessionControllerTests
             {
                 SessionId = Guid.NewGuid(),
                 MemberId = userId,
-                CreatedAt = DateTime.UtcNow,
-                LastActiveAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow.AddDays(-31),
+                LastActiveAt = DateTime.UtcNow.AddDays(-31),
                 ExpiresAt = DateTime.UtcNow.AddHours(-1),
                 Device = "Expired device",
                 IPAddress = "127.0.0.3",
@@ -81,7 +81,7 @@ public class SessionControllerTests
                 MemberId = otherUserId,
                 CreatedAt = DateTime.UtcNow,
                 LastActiveAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddHours(1),
+                ExpiresAt = DateTime.UtcNow.AddDays(30),
                 Device = "Other user device",
                 IPAddress = "127.0.0.4",
                 State = SessionState.Active
@@ -101,6 +101,36 @@ public class SessionControllerTests
         Assert.Equal("Chrome on Windows", sessions[0].Device);
         Assert.Equal("127.0.0.1", sessions[0].IPAddress);
         Assert.Equal(SessionState.Active, sessions[0].State);
+    }
+
+    [Fact]
+    public async Task ViewActiveSessions_ShowsSessionCreatedNearly30DaysAgo()
+    {
+        var userId = Guid.NewGuid();
+        var (controller, db) = CreateController(userId);
+
+        var nearlyExpired = new Session
+        {
+            SessionId = Guid.NewGuid(),
+            MemberId = userId,
+            CreatedAt = DateTime.UtcNow.AddDays(-29),
+            LastActiveAt = DateTime.UtcNow.AddDays(-29),
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+            Device = "Old laptop",
+            IPAddress = "127.0.0.5",
+            State = SessionState.Active
+        };
+
+        db.Sessions.Add(nearlyExpired);
+        await db.SaveChangesAsync();
+
+        var result = await controller.ViewActiveSessions();
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var sessions = Assert.IsType<List<GetSessionsResponse>>(okResult.Value);
+
+        Assert.Single(sessions);
+        Assert.Equal(nearlyExpired.SessionId, sessions[0].SessionId);
     }
 
     [Fact]
@@ -137,7 +167,7 @@ public class SessionControllerTests
             MemberId = otherUserId,
             CreatedAt = DateTime.UtcNow,
             LastActiveAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddHours(1),
+            ExpiresAt = DateTime.UtcNow.AddDays(30),
             Device = "Chrome",
             IPAddress = "127.0.0.1",
             State = SessionState.Active
@@ -163,7 +193,7 @@ public class SessionControllerTests
             MemberId = userId,
             CreatedAt = DateTime.UtcNow,
             LastActiveAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddHours(1),
+            ExpiresAt = DateTime.UtcNow.AddDays(30),
             Device = "Chrome",
             IPAddress = "127.0.0.1",
             State = SessionState.Active

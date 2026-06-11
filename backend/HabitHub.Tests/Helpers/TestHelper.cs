@@ -37,8 +37,8 @@ public static class TestHelper
     {
         var mock = new Mock<IJwtTokenService>();
 
-        mock.Setup(s => s.CreateToken(It.IsAny<Member>()))
-            .Returns(("fake-jwt-token", DateTime.UtcNow.AddHours(1)));
+        mock.Setup(s => s.CreateToken(It.IsAny<Member>(), It.IsAny<Guid>()))
+            .Returns(("fake-jwt-token", DateTime.UtcNow.AddDays(30)));
 
         return mock;
     }

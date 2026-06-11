@@ -13,6 +13,8 @@ using Microsoft.EntityFrameworkCore;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+    private static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(30);
+
     private readonly AppDbContext _dbContext;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly PasswordHasher<Member> _passwordHasher;
@@ -31,7 +33,13 @@ public class AuthController : ControllerBase
 
         var exist = await _dbContext.Members.AnyAsync(m => m.Email == email, cancellationToken);
         if (exist)
-            return BadRequest("Email already in use");
+        {
+            return Conflict(new
+            {
+                error = "email-already-used",
+                message = "An account with this email already exists."
+            });
+        }
 
         var member = new Member
         {
@@ -45,33 +53,8 @@ public class AuthController : ControllerBase
         _dbContext.Members.Add(member);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        var (token, expiresAt) = _jwtTokenService.CreateToken(member);
-
-        var now = DateTime.UtcNow;
-
-        var session = new Session
-        {
-            SessionId = Guid.NewGuid(),
-            MemberId = member.MemberId,
-            CreatedAt = now,
-            LastActiveAt = now,
-            ExpiresAt = expiresAt,
-            IPAddress = GetIpAddress(),
-            Device = GetDevice(),
-            State = SessionState.Active
-        };
-
-        _dbContext.Sessions.Add(session);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return Ok(new AuthResponse
-        {
-            Token = token,
-            UserId = member.MemberId,
-            Username = member.Name,
-            Email = member.Email,
-            SessionId = session.SessionId
-        });
+        var response = await CreateSessionAndTokenAsync(member, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, response);
     }
 
     [HttpPost("login")]
@@ -81,22 +64,42 @@ public class AuthController : ControllerBase
 
         var member = await _dbContext.Members.FirstOrDefaultAsync(m => m.Email == email, cancellationToken);
         if (member == null)
-            return BadRequest("Invalid email or password");
+        {
+            return Unauthorized(new
+            {
+                error = "invalid-credentials",
+                message = "Invalid email or password."
+            });
+        }
 
         var result = _passwordHasher.VerifyHashedPassword(member, member.PasswordHash, request.Password);
         if (result == PasswordVerificationResult.Failed)
-            return BadRequest("Invalid email or password");
+        {
+            return Unauthorized(new
+            {
+                error = "invalid-credentials",
+                message = "Invalid email or password."
+            });
+        }
 
-        var (token, expiresAt) = _jwtTokenService.CreateToken(member);
+        var response = await CreateSessionAndTokenAsync(member, cancellationToken);
+        return Ok(response);
+    }
+
+    private async Task<AuthResponse> CreateSessionAndTokenAsync(Member member, CancellationToken cancellationToken)
+    {
+        var sessionId = Guid.NewGuid();
+        var (token, _) = _jwtTokenService.CreateToken(member, sessionId);
+
         var now = DateTime.UtcNow;
 
         var session = new Session
         {
-            SessionId = Guid.NewGuid(),
+            SessionId = sessionId,
             MemberId = member.MemberId,
             CreatedAt = now,
             LastActiveAt = now,
-            ExpiresAt = expiresAt,
+            ExpiresAt = now.Add(SessionLifetime),
             IPAddress = GetIpAddress(),
             Device = GetDevice(),
             State = SessionState.Active
@@ -105,14 +108,14 @@ public class AuthController : ControllerBase
         _dbContext.Sessions.Add(session);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return Ok(new AuthResponse
+        return new AuthResponse
         {
             Token = token,
             UserId = member.MemberId,
             Username = member.Name,
             Email = member.Email,
             SessionId = session.SessionId
-        });
+        };
     }
 
     private string GetIpAddress()

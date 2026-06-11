@@ -50,7 +50,7 @@ public class AuthController_LoginTests
     }
 
     [Fact]
-    public async Task Login_WithWrongEmail_ReturnsBadRequest()
+    public async Task Login_WithWrongEmail_ReturnsUnauthorizedWithInvalidCredentials()
     {
         var controller = await CreateControllerWithRegisteredUser();
 
@@ -62,11 +62,12 @@ public class AuthController_LoginTests
 
         var result = await controller.Login(request, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var unauthorized = Assert.IsType<UnauthorizedObjectResult>(result.Result);
+        Assert.Contains("invalid-credentials", unauthorized.Value!.ToString());
     }
 
     [Fact]
-    public async Task Login_WithWrongPassword_ReturnsBadRequest()
+    public async Task Login_WithWrongPassword_ReturnsUnauthorizedWithInvalidCredentials()
     {
         var controller = await CreateControllerWithRegisteredUser();
 
@@ -78,7 +79,8 @@ public class AuthController_LoginTests
 
         var result = await controller.Login(request, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var unauthorized = Assert.IsType<UnauthorizedObjectResult>(result.Result);
+        Assert.Contains("invalid-credentials", unauthorized.Value!.ToString());
     }
 
     [Fact]
@@ -124,6 +126,36 @@ public class AuthController_LoginTests
     }
 
     [Fact]
+    public async Task Login_CreatesSessionExpiringIn30Days()
+    {
+        var dbContext = TestHelper.CreateInMemoryDbContext();
+        var jwtMock = TestHelper.CreateMockJwtService();
+        var controller = new AuthController(dbContext, jwtMock.Object);
+
+        await controller.Register(new RegisterRequest
+        {
+            Username = "testuser",
+            Email = "test@example.com",
+            Password = "Password123!"
+        }, CancellationToken.None);
+
+        var before = DateTime.UtcNow;
+        var loginResult = await controller.Login(new LoginRequest
+        {
+            Email = "test@example.com",
+            Password = "Password123!"
+        }, CancellationToken.None);
+
+        var loginResponse = (loginResult.Result as OkObjectResult)!.Value as AuthResponse;
+        var loginSession = dbContext.Sessions.First(s => s.SessionId == loginResponse!.SessionId);
+
+        Assert.InRange(
+            loginSession.ExpiresAt,
+            before.AddDays(30).AddSeconds(-5),
+            DateTime.UtcNow.AddDays(30).AddSeconds(5));
+    }
+
+    [Fact]
     public async Task Login_ReturnsCorrectUserId_ForRegisteredUser()
     {
         var dbContext = TestHelper.CreateInMemoryDbContext();
@@ -137,7 +169,7 @@ public class AuthController_LoginTests
             Password = "Password123!"
         }, CancellationToken.None);
 
-        var registerResponse = (registerResult.Result as OkObjectResult)!.Value as AuthResponse;
+        var registerResponse = (registerResult.Result as ObjectResult)!.Value as AuthResponse;
 
         var loginResult = await controller.Login(new LoginRequest
         {
@@ -168,10 +200,10 @@ public class AuthController_LoginTests
             Password = "WrongPassword!"
         }, CancellationToken.None);
 
-        var badRequest1 = Assert.IsType<BadRequestObjectResult>(resultWrongEmail.Result);
-        var badRequest2 = Assert.IsType<BadRequestObjectResult>(resultWrongPassword.Result);
+        var unauthorized1 = Assert.IsType<UnauthorizedObjectResult>(resultWrongEmail.Result);
+        var unauthorized2 = Assert.IsType<UnauthorizedObjectResult>(resultWrongPassword.Result);
 
-        Assert.Equal(badRequest1.Value, badRequest2.Value);
+        Assert.Equal(unauthorized1.Value!.ToString(), unauthorized2.Value!.ToString());
     }
 
     [Theory]
@@ -208,6 +240,6 @@ public class AuthController_LoginTests
             Password = password
         }, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
     }
 }

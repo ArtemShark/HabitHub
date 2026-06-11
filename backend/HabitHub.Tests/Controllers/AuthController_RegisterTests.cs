@@ -1,14 +1,16 @@
 ﻿using HabitHub.Api.Contracts.Auth;
 using HabitHub.Api.Controllers;
 using HabitHub.Tests.Helpers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Moq;
 
 namespace HabitHub.Tests.Controllers;
 
 public class AuthController_RegisterTests
 {
     [Fact]
-    public async Task Register_WithValidData_ReturnsOkWithAuthResponse()
+    public async Task Register_WithValidData_ReturnsCreatedWithAuthResponse()
     {
         var dbContext = TestHelper.CreateInMemoryDbContext();
         var jwtMock = TestHelper.CreateMockJwtService();
@@ -23,9 +25,10 @@ public class AuthController_RegisterTests
 
         var result = await controller.Register(request, CancellationToken.None);
 
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var response = Assert.IsType<AuthResponse>(okResult.Value);
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, objectResult.StatusCode);
 
+        var response = Assert.IsType<AuthResponse>(objectResult.Value);
         Assert.Equal("testuser", response.Username);
         Assert.Equal("test@example.com", response.Email);
         Assert.Equal("fake-jwt-token", response.Token);
@@ -34,7 +37,7 @@ public class AuthController_RegisterTests
     }
 
     [Fact]
-    public async Task Register_WithDuplicateEmail_ReturnsBadRequest()
+    public async Task Register_WithDuplicateEmail_ReturnsConflictWithEmailAlreadyUsed()
     {
         var dbContext = TestHelper.CreateInMemoryDbContext();
         var jwtMock = TestHelper.CreateMockJwtService();
@@ -47,10 +50,8 @@ public class AuthController_RegisterTests
             Password = "Password123!"
         };
 
-        // Register first user
         await controller.Register(request, CancellationToken.None);
 
-        // Register second user with same email
         var secondRequest = new RegisterRequest
         {
             Username = "user2",
@@ -60,7 +61,9 @@ public class AuthController_RegisterTests
 
         var result = await controller.Register(secondRequest, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        var body = Assert.IsAssignableFrom<object>(conflict.Value);
+        Assert.Contains("email-already-used", body.ToString());
     }
 
     [Fact]
@@ -79,8 +82,9 @@ public class AuthController_RegisterTests
 
         var result = await controller.Register(request, CancellationToken.None);
 
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var response = Assert.IsType<AuthResponse>(okResult.Value);
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, objectResult.StatusCode);
+        var response = Assert.IsType<AuthResponse>(objectResult.Value);
         Assert.Equal("test@example.com", response.Email);
     }
 
@@ -98,7 +102,6 @@ public class AuthController_RegisterTests
             Password = "Password123!"
         }, CancellationToken.None);
 
-        // Same email but different case
         var result = await controller.Register(new RegisterRequest
         {
             Username = "user2",
@@ -106,7 +109,7 @@ public class AuthController_RegisterTests
             Password = "Password456!"
         }, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.IsType<ConflictObjectResult>(result.Result);
     }
 
     [Fact]
@@ -173,6 +176,51 @@ public class AuthController_RegisterTests
     }
 
     [Fact]
+    public async Task Register_CreatesSessionExpiringIn30Days()
+    {
+        var dbContext = TestHelper.CreateInMemoryDbContext();
+        var jwtMock = TestHelper.CreateMockJwtService();
+        var controller = new AuthController(dbContext, jwtMock.Object);
+
+        var before = DateTime.UtcNow;
+        await controller.Register(new RegisterRequest
+        {
+            Username = "testuser",
+            Email = "test@example.com",
+            Password = "Password123!"
+        }, CancellationToken.None);
+
+        var session = dbContext.Sessions.First();
+
+        Assert.InRange(
+            session.ExpiresAt,
+            before.AddDays(30).AddSeconds(-5),
+            DateTime.UtcNow.AddDays(30).AddSeconds(5));
+    }
+
+    [Fact]
+    public async Task Register_PassesSessionIdToJwtService()
+    {
+        var dbContext = TestHelper.CreateInMemoryDbContext();
+        var jwtMock = TestHelper.CreateMockJwtService();
+        var controller = new AuthController(dbContext, jwtMock.Object);
+
+        await controller.Register(new RegisterRequest
+        {
+            Username = "testuser",
+            Email = "test@example.com",
+            Password = "Password123!"
+        }, CancellationToken.None);
+
+        var session = dbContext.Sessions.First();
+
+        jwtMock.Verify(s => s.CreateToken(
+            It.Is<HabitHub.Api.Models.Member>(m => m.MemberId == session.MemberId),
+            It.Is<Guid>(g => g == session.SessionId)),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task Register_StoresHashedPassword_NotPlainText()
     {
         var dbContext = TestHelper.CreateInMemoryDbContext();
@@ -210,8 +258,9 @@ public class AuthController_RegisterTests
             Password = "Password123!"
         }, CancellationToken.None);
 
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var response = Assert.IsType<AuthResponse>(okResult.Value);
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, objectResult.StatusCode);
+        var response = Assert.IsType<AuthResponse>(objectResult.Value);
         Assert.Equal(expected, response.Email);
     }
 
