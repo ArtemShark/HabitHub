@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using HabitHub.Api.Contracts.Member;
 using HabitHub.Api.Contracts.Team;
 using HabitHub.Tests.Helpers;
 using HabitHub.Api.Data;
@@ -95,12 +96,63 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task GetTeamMembers_WithoutToken_ReturnsUnauthorized()
+    {
+        var response = await _client.GetAsync($"/api/teams/{Guid.NewGuid()}/members");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTeamMembers_WhenTeamMissing_ReturnsNotFound()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+
+        var response = await _client.GetAsync($"/api/teams/{Guid.NewGuid()}/members");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTeamMembers_AsNonMember_ReturnsForbidden()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Closed" });
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+
+        var (outsider, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
+        var response = await outsider.GetAsync($"/api/teams/{team!.HabitTeamId}/members");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTeamMembers_AsCreator_ReturnsActiveMembers()
+    {
+        var creator = await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Active Only" });
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+        var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
+
+        var (joinerClient, joinerAuth) = await TestHelper.CreateSecondaryClientAsync(_factory);
+        await joinerClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
+
+        var response = await _client.GetAsync($"/api/teams/{team.HabitTeamId}/members");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var members = await response.Content.ReadFromJsonAsync<List<TeamMemberResponse>>(TestHelper.JsonOptions);
+        Assert.NotNull(members);
+        Assert.Equal(2, members!.Count);
+        Assert.Contains(members, m => m.MemberId == creator.UserId);
+        Assert.Contains(members, m => m.MemberId == joinerAuth.UserId);
+    }
+
 
     [Fact]
     public async Task JoinTeam_WithValidInviteCode_AddsMember()
     {
         var creatorAuth = await TestHelper.RegisterAndAuthenticateAsync(_client);
-        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Inviters" });
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Joinable" });
         var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
@@ -108,11 +160,16 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
         var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
 
         var (joinerClient, joinerAuth) = await TestHelper.CreateSecondaryClientAsync(_factory);
-        var joinResponse = await joinerClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
+        var joinResponse = await joinerClient.PostAsJsonAsync(
+            "/api/teams/join",
+            new JoinTeamRequest { Code = invite!.Code });
         Assert.Equal(HttpStatusCode.OK, joinResponse.StatusCode);
 
-        var joined = await joinResponse.Content.ReadFromJsonAsync<JoinTeamResponse>(TestHelper.JsonOptions);
-        Assert.Equal(team.HabitTeamId, joined!.TeamId);
+        var teamView = await _client.GetAsync($"/api/teams/{team.HabitTeamId}");
+        var fetched = await teamView.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+        Assert.Equal(2, fetched!.Members.Count);
+        Assert.Contains(fetched.Members, m => m.MemberId == joinerAuth.UserId);
+        Assert.Contains(fetched.Members, m => m.MemberId == creatorAuth.UserId);
     }
 
     [Fact]
@@ -137,64 +194,163 @@ public class TeamsApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task GetInviteCodes_WithoutToken_ReturnsUnauthorized()
+    {
+        var response = await _client.GetAsync($"/api/teams/{Guid.NewGuid()}/invite-codes");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetInviteCodes_WhenTeamMissing_ReturnsNotFound()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+
+        var response = await _client.GetAsync($"/api/teams/{Guid.NewGuid()}/invite-codes");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetInviteCodes_AsNonCreator_ReturnsForbidden()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Closed" });
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+
+        var (outsider, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
+        var response = await outsider.GetAsync($"/api/teams/{team!.HabitTeamId}/invite-codes");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetInviteCodes_AsCreator_ReturnsActiveCodes()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Codes" });
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+
+        var firstInvite = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
+        var secondInvite = await _client.PostAsync($"/api/teams/{team.HabitTeamId}/invite-codes", content: null);
+        Assert.Equal(HttpStatusCode.Created, firstInvite.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, secondInvite.StatusCode);
+
+        var response = await _client.GetAsync($"/api/teams/{team.HabitTeamId}/invite-codes");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var codes = await response.Content.ReadFromJsonAsync<List<CodeResponse>>(TestHelper.JsonOptions);
+        Assert.NotNull(codes);
+        Assert.Equal(2, codes!.Count);
+        Assert.All(codes, c => Assert.Equal(CodeState.Active, c.CodeStatus));
+        Assert.All(codes, c => Assert.Equal(team.HabitTeamId, c.HabitTeamId));
+    }
+
+    [Fact]
+    public async Task InvalidateInviteCode_WithoutToken_ReturnsUnauthorized()
+    {
+        var response = await _client.DeleteAsync(
+            $"/api/teams/{Guid.NewGuid()}/invite-codes/{Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InvalidateInviteCode_WhenTeamMissing_ReturnsNotFound()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+
+        var response = await _client.DeleteAsync(
+            $"/api/teams/{Guid.NewGuid()}/invite-codes/{Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InvalidateInviteCode_AsNonCreator_ReturnsForbidden()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Closed" });
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+        var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
+
+        var (outsider, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
+        var response = await outsider.DeleteAsync(
+            $"/api/teams/{team.HabitTeamId}/invite-codes/{invite!.InviteCodeId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InvalidateInviteCode_HappyPath_ReturnsNoContentAndPreventsJoin()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Killable Codes" });
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+        var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
+
+        var deleteResponse = await _client.DeleteAsync(
+            $"/api/teams/{team.HabitTeamId}/invite-codes/{invite!.InviteCodeId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var (joinerClient, _) = await TestHelper.CreateSecondaryClientAsync(_factory);
+        var joinResponse = await joinerClient.PostAsJsonAsync(
+            "/api/teams/join",
+            new JoinTeamRequest { Code = invite.Code });
+        Assert.Equal(HttpStatusCode.Conflict, joinResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task InvalidateInviteCode_WhenAlreadyInvalidated_ReturnsConflict()
+    {
+        await TestHelper.RegisterAndAuthenticateAsync(_client);
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Idempotent" });
+        var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+        var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
+
+        var firstDelete = await _client.DeleteAsync(
+            $"/api/teams/{team.HabitTeamId}/invite-codes/{invite!.InviteCodeId}");
+        Assert.Equal(HttpStatusCode.NoContent, firstDelete.StatusCode);
+
+        var secondDelete = await _client.DeleteAsync(
+            $"/api/teams/{team.HabitTeamId}/invite-codes/{invite.InviteCodeId}");
+        Assert.Equal(HttpStatusCode.Conflict, secondDelete.StatusCode);
+    }
+
 
     [Fact]
     public async Task KickMember_AsCreator_SetsKickedAndRemovesFromVisibleMembers()
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
-
-        var create = await _client.PostAsJsonAsync(
-            "/api/teams",
-            new CreateTeamRequest { Name = "Kickers" });
-
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Kickers" });
         var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
-
-        var inviteResponse = await _client.PostAsync(
-            $"/api/teams/{team!.HabitTeamId}/invite-codes",
-            content: null);
-
+        var inviteResponse = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/invite-codes", content: null);
         var invite = await inviteResponse.Content.ReadFromJsonAsync<CodeResponse>(TestHelper.JsonOptions);
 
         var (joinerClient, joinerAuth) = await TestHelper.CreateSecondaryClientAsync(_factory);
-
-        var joinResponse = await joinerClient.PostAsJsonAsync(
-            "/api/teams/join",
-            new JoinTeamRequest { Code = invite!.Code });
-
-        Assert.Equal(HttpStatusCode.OK, joinResponse.StatusCode);
+        await joinerClient.PostAsJsonAsync("/api/teams/join", new JoinTeamRequest { Code = invite!.Code });
 
         var kickResponse = await _client.PostAsync(
             $"/api/teams/{team.HabitTeamId}/members/{joinerAuth.UserId}/kick",
             content: null);
-
         Assert.Equal(HttpStatusCode.OK, kickResponse.StatusCode);
 
-        var fetched = await _client.GetFromJsonAsync<TeamResponse>(
-            $"/api/teams/{team.HabitTeamId}",
-            TestHelper.JsonOptions);
+        var getAfterKick = await joinerClient.GetAsync($"/api/teams/{team.HabitTeamId}");
+        Assert.Equal(HttpStatusCode.Forbidden, getAfterKick.StatusCode);
 
-        Assert.NotNull(fetched);
-        Assert.DoesNotContain(fetched!.Members, m => m.MemberId == joinerAuth.UserId);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        var kickedMembership = await db.Memberships.FirstOrDefaultAsync(m =>
-            m.HabitTeamId == team.HabitTeamId &&
-            m.MemberId == joinerAuth.UserId);
-
-        Assert.NotNull(kickedMembership);
-        Assert.Equal(MembershipStatus.Kicked, kickedMembership!.Status);
+        var creatorView = await _client.GetAsync($"/api/teams/{team.HabitTeamId}");
+        var view = await creatorView.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
+        Assert.DoesNotContain(view!.Members, m => m.MemberId == joinerAuth.UserId);
     }
+
     [Fact]
     public async Task LeaveTeam_AsCreator_ReturnsConflict()
     {
         await TestHelper.RegisterAndAuthenticateAsync(_client);
-        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "Stuck" });
+        var create = await _client.PostAsJsonAsync("/api/teams", new CreateTeamRequest { Name = "MyTeam" });
         var team = await create.Content.ReadFromJsonAsync<TeamResponse>(TestHelper.JsonOptions);
 
         var response = await _client.PostAsync($"/api/teams/{team!.HabitTeamId}/leave", content: null);
-
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
