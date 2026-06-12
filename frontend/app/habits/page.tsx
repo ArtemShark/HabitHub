@@ -240,12 +240,6 @@ export default function HabitsPage() {
                 <StatPill label="Total" value={habits.length} />
               </div>
 
-              <button
-                disabled
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 px-5 py-3 text-sm font-semibold text-white/50 cursor-not-allowed"
-              >
-                Create endpoint not added yet
-              </button>
             </Card>
           </motion.div>
 

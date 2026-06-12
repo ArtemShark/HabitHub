@@ -26,6 +26,7 @@ import PageHeader from "../components/PageHeader";
 import SectionTitle from "../components/SectionTitle";
 import { itemVariants } from "../auxiliary/variants/itemVariant";
 import { containerVariants } from "../auxiliary/variants/containerVariants";
+import Link from "next/link";
 
 
 async function fetchHabitsForMember(memberId: string): Promise<Habit[]> {
@@ -813,6 +814,7 @@ export default function HomePage() {
           className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2"
         >
           <motion.div variants={itemVariants}>
+            <Link href="/reminders">
             <Card>
               <div className="flex items-center justify-between gap-4">
                 <div>
@@ -828,9 +830,11 @@ export default function HomePage() {
                 </div>
               </div>
             </Card>
+            </Link>
           </motion.div>
 
           <motion.div variants={itemVariants}>
+          <Link href="/profile">
             <Card>
               <div className="flex items-center justify-between gap-4">
                 <div>
@@ -846,6 +850,7 @@ export default function HomePage() {
                 </div>
               </div>
             </Card>
+            </Link>
           </motion.div>
         </motion.section>
       </motion.div>
