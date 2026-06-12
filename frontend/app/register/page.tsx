@@ -73,6 +73,7 @@ export default function RegisterPage() {
             email,
             password,
             username,
+            timezone: getBrowserTimezone(),
           }),
         }
       );
@@ -369,4 +370,12 @@ function AnimateError({ error }: { error: string }) {
       )}
     </motion.div>
   );
+}
+
+function getBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
 }

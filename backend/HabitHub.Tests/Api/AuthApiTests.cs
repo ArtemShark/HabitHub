@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using HabitHub.Api.Contracts.Auth;
 using HabitHub.Api.Data;
+using HabitHub.Api.Enums;
 using HabitHub.Tests.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -239,6 +240,42 @@ public class AuthApiTests : IClassFixture<CustomWebApplicationFactory>
             Assert.True(staleness < 60,
                 $"Expected LastActiveAt to be recent; staleness was {staleness:F1}s.");
         }
+    }
+
+    [Fact]
+    public async Task AuthenticatedRequest_WithInvalidatedSession_ReturnsUnauthorized()
+    {
+        var auth = await TestHelper.RegisterAndAuthenticateAsync(_client);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var session = await db.Sessions.FirstAsync(s => s.SessionId == auth.SessionId);
+            session.State = SessionState.Invalidated;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/api/teams");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AuthenticatedRequest_WithExpiredSession_ReturnsUnauthorized()
+    {
+        var auth = await TestHelper.RegisterAndAuthenticateAsync(_client);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var session = await db.Sessions.FirstAsync(s => s.SessionId == auth.SessionId);
+            session.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/api/teams");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

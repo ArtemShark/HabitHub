@@ -86,9 +86,8 @@ app.UseHttpsRedirection();
 app.UseCors("frontend");
 
 app.UseAuthentication();
-app.UseAuthorization();
-
 app.UseMiddleware<SessionActivityMiddleware>();
+app.UseAuthorization();
 
 app.MapControllers();
 app.MapGet("/", () => "HabitHub backend is running");

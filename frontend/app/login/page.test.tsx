@@ -70,6 +70,16 @@ describe("HabitHubLoginPage", () => {
     expect(screen.getByRole("button", { name: /log in/i })).toBeInTheDocument();
   });
 
+
+  it("links to forgot password page", () => {
+    render(<HabitHubLoginPage />);
+
+    expect(screen.getByRole("link", { name: /forgot password/i })).toHaveAttribute(
+      "href",
+      "/forgot-password"
+    );
+  });
+
   it("logs in successfully and stores auth data in localStorage", async () => {
     render(<HabitHubLoginPage />);
 

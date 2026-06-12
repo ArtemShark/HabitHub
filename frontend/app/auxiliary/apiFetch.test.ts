@@ -1,7 +1,43 @@
-import { apiFetch, getToken, API_BASE_URL } from "./apiFetch";
+import { apiFetch, getToken, API_BASE_URL, clearAuthStorage } from "./apiFetch";
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
+
+type StorageData = Record<string, string>;
+
+function createStorageMock(initial: StorageData = {}) {
+  let store = { ...initial };
+
+  return {
+    getItem: jest.fn((key: string) => store[key] ?? null),
+    setItem: jest.fn((key: string, value: string) => {
+      store[key] = value;
+    }),
+    removeItem: jest.fn((key: string) => {
+      delete store[key];
+    }),
+    clear: jest.fn(() => {
+      store = {};
+    }),
+  };
+}
+
+function setStorage(local: StorageData = {}, session: StorageData = {}) {
+  const localStorageMock = createStorageMock(local);
+  const sessionStorageMock = createStorageMock(session);
+
+  Object.defineProperty(window, "localStorage", {
+    value: localStorageMock,
+    writable: true,
+  });
+
+  Object.defineProperty(window, "sessionStorage", {
+    value: sessionStorageMock,
+    writable: true,
+  });
+
+  return { localStorageMock, sessionStorageMock };
+}
 
 function jsonResponse(data: unknown, status = 200) {
   return {
@@ -9,7 +45,7 @@ function jsonResponse(data: unknown, status = 200) {
     status,
     headers: {
       get: (key: string) =>
-        key === "content-type" ? "application/json" : null,
+        key.toLowerCase() === "content-type" ? "application/json" : null,
     },
     json: async () => data,
     text: async () => JSON.stringify(data),
@@ -22,7 +58,7 @@ function textResponse(text: string, status = 200) {
     status,
     headers: {
       get: (key: string) =>
-        key === "content-type" ? "text/plain" : null,
+        key.toLowerCase() === "content-type" ? "text/plain" : null,
     },
     json: async () => {
       throw new Error("not json");
@@ -37,61 +73,47 @@ describe("getToken", () => {
   });
 
   it("returns token from localStorage", () => {
-    Object.defineProperty(window, "localStorage", {
-      value: { getItem: jest.fn(() => "ls-token-123") },
-      writable: true,
-    });
-
-    Object.defineProperty(window, "sessionStorage", {
-      value: { getItem: jest.fn(() => null) },
-      writable: true,
-    });
+    setStorage({ token: "ls-token-123" });
 
     expect(getToken()).toBe("ls-token-123");
   });
 
   it("falls back to sessionStorage when localStorage is empty", () => {
-    Object.defineProperty(window, "localStorage", {
-      value: { getItem: jest.fn(() => null) },
-      writable: true,
-    });
-
-    Object.defineProperty(window, "sessionStorage", {
-      value: { getItem: jest.fn(() => "ss-token-456") },
-      writable: true,
-    });
+    setStorage({}, { token: "ss-token-456" });
 
     expect(getToken()).toBe("ss-token-456");
   });
 
   it("returns null when no token is stored", () => {
-    Object.defineProperty(window, "localStorage", {
-      value: { getItem: jest.fn(() => null) },
-      writable: true,
-    });
-
-    Object.defineProperty(window, "sessionStorage", {
-      value: { getItem: jest.fn(() => null) },
-      writable: true,
-    });
+    setStorage();
 
     expect(getToken()).toBeNull();
+  });
+});
+
+describe("clearAuthStorage", () => {
+  it("removes auth data from localStorage and sessionStorage", () => {
+    const { localStorageMock, sessionStorageMock } = setStorage(
+      { token: "local-token", user: "{}", sessionId: "session-1" },
+      { token: "session-token", user: "{}", sessionId: "session-2" }
+    );
+
+    clearAuthStorage();
+
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("token");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("user");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("sessionId");
+    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith("token");
+    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith("user");
+    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith("sessionId");
   });
 });
 
 describe("apiFetch", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-
-    Object.defineProperty(window, "localStorage", {
-      value: { getItem: jest.fn(() => null) },
-      writable: true,
-    });
-
-    Object.defineProperty(window, "sessionStorage", {
-      value: { getItem: jest.fn(() => null) },
-      writable: true,
-    });
+    setStorage();
+    window.history.pushState({}, "", "/dashboard");
   });
 
   describe("request construction", () => {
@@ -159,16 +181,7 @@ describe("apiFetch", () => {
     });
 
     it("sets Authorization header when token exists", async () => {
-      Object.defineProperty(window, "localStorage", {
-        value: { getItem: jest.fn(() => "my-jwt-token") },
-        writable: true,
-      });
-
-      Object.defineProperty(window, "sessionStorage", {
-        value: { getItem: jest.fn(() => null) },
-        writable: true,
-      });
-
+      setStorage({ token: "my-jwt-token" });
       mockFetch.mockResolvedValueOnce(jsonResponse([]));
 
       await apiFetch("/api/habits");
@@ -241,24 +254,58 @@ describe("apiFetch", () => {
   });
 
   describe("error handling", () => {
-    it("throws on 401 with unauthorized message", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        headers: { get: () => "text/plain" },
-        text: async () => "",
-      });
+    it("clears auth data and dispatches login redirect event on 401", async () => {
+      const { localStorageMock, sessionStorageMock } = setStorage(
+        { token: "expired-token", user: "{}", sessionId: "session-1" },
+        { token: "session-token", user: "{}", sessionId: "session-2" }
+      );
+
+      const redirectListener = jest.fn();
+      window.addEventListener("auth:unauthorized", redirectListener);
+
+      mockFetch.mockResolvedValueOnce(jsonResponse({ error: "session-inactive" }, 401));
 
       await expect(apiFetch("/api/habits")).rejects.toThrow(
-        "Unauthorized. Please log in again."
+        "Your session is no longer active. Please log in again."
+      );
+
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith("token");
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith("user");
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith("sessionId");
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith("token");
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith("user");
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith("sessionId");
+      expect(redirectListener).toHaveBeenCalledTimes(1);
+      expect(redirectListener.mock.calls[0][0].detail.redirectTo).toBe(
+        "/login?next=%2Fdashboard"
+      );
+
+      window.removeEventListener("auth:unauthorized", redirectListener);
+    });
+
+    it("maps JSON slug error to a user-friendly message", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ error: "log-already-exists" }, 409)
+      );
+
+      await expect(apiFetch("/api/habits", { method: "POST", body: "{}" })).rejects.toThrow(
+        "This habit has already been logged today."
       );
     });
 
-    it("throws with JSON error message from server", async () => {
+    it("maps plain text slug error to a user-friendly message", async () => {
+      mockFetch.mockResolvedValueOnce(textResponse("creator-cannot-leave", 400));
+
+      await expect(apiFetch("/api/teams/abc/leave", { method: "POST" })).rejects.toThrow(
+        "The team creator cannot leave the team. Delete the team or transfer ownership first."
+      );
+    });
+
+    it("keeps readable JSON error message from server", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 400,
-        headers: { get: (k: string) => (k === "content-type" ? "application/json" : null) },
+        headers: { get: (k: string) => (k.toLowerCase() === "content-type" ? "application/json" : null) },
         json: async () => ({ message: "Name is required" }),
       });
 
@@ -267,11 +314,11 @@ describe("apiFetch", () => {
       );
     });
 
-    it("throws with JSON title field when message is absent", async () => {
+    it("keeps readable JSON title field when message is absent", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 422,
-        headers: { get: (k: string) => (k === "content-type" ? "application/json" : null) },
+        headers: { get: (k: string) => (k.toLowerCase() === "content-type" ? "application/json" : null) },
         json: async () => ({ title: "Validation failed" }),
       });
 
@@ -280,13 +327,8 @@ describe("apiFetch", () => {
       );
     });
 
-    it("throws with plain text error from server", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        headers: { get: () => "text/plain" },
-        text: async () => "Habit not found",
-      });
+    it("throws with plain text error from server when it is readable", async () => {
+      mockFetch.mockResolvedValueOnce(textResponse("Habit not found", 404));
 
       await expect(apiFetch("/api/habits/xyz")).rejects.toThrow("Habit not found");
     });
@@ -295,27 +337,22 @@ describe("apiFetch", () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
-        headers: { get: (k: string) => (k === "content-type" ? "application/json" : null) },
+        headers: { get: (k: string) => (k.toLowerCase() === "content-type" ? "application/json" : null) },
         json: async () => {
           throw new Error("parse error");
         },
       });
 
       await expect(apiFetch("/api/habits")).rejects.toThrow(
-        "API request failed with status 500"
+        "Server error. Please try again later."
       );
     });
 
     it("throws with generic message when error text is empty", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        headers: { get: () => "text/plain" },
-        text: async () => "",
-      });
+      mockFetch.mockResolvedValueOnce(textResponse("", 403));
 
       await expect(apiFetch("/api/habits")).rejects.toThrow(
-        "API request failed with status 403"
+        "You do not have permission to perform this action."
       );
     });
   });

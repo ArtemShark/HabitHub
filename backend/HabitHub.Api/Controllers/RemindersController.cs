@@ -56,7 +56,7 @@ public class RemindersController : ControllerBase
             });
         }
 
-        habit.ReminderTime = ToUtc(request.ReminderTime);
+        habit.ReminderTime = ToReminderWallClockTime(request.ReminderTime);
 
         var activeMemberIds = habit.Team.Memberships
             .Where(m => m.Status == MembershipStatus.Active)
@@ -197,13 +197,8 @@ public class RemindersController : ControllerBase
         return Ok(reminders);
     }
 
-    private static DateTime ToUtc(DateTime value)
+    private static DateTime ToReminderWallClockTime(DateTime value)
     {
-        return value.Kind switch
-        {
-            DateTimeKind.Utc => value,
-            DateTimeKind.Local => value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
-        };
+        return DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
     }
 }

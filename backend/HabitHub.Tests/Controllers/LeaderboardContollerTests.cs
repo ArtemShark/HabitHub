@@ -134,7 +134,8 @@ public class LeaderboardControllerTests
     private static HabitEntry CreateEntry(
         Habit habit,
         Member member,
-        float? value)
+        float? value,
+        EntryStatus status = EntryStatus.Logged)
     {
         return new HabitEntry
         {
@@ -144,7 +145,7 @@ public class LeaderboardControllerTests
             MemberId = member.MemberId,
             Member = member,
             Date = DateTime.UtcNow,
-            Status = default,
+            Status = status,
             Value = value,
             Notes = ""
         };
@@ -334,6 +335,50 @@ public class LeaderboardControllerTests
         Assert.Equal("Bob", response.Entries[1].Username);
         Assert.Equal(1, response.Entries[1].TotalProgress);
         Assert.Equal(2, response.Entries[1].Rank);
+    }
+
+    [Fact]
+    public async Task ViewLeaderboard_DoesNotCountSkippedEntries_ForBinaryHabit()
+    {
+        await using var context = CreateDbContext();
+
+        var currentUserId = Guid.NewGuid();
+
+        var member1 = CreateMember(currentUserId, "Alice");
+        var member2 = CreateMember(Guid.NewGuid(), "Bob");
+
+        var teamId = Guid.NewGuid();
+        var habitId = Guid.NewGuid();
+
+        var team = CreateTeam(teamId, member1, "Health Team");
+        var habit = CreateHabit(habitId, team, member1, "Meditation", HabitType.Binary);
+        var membership = CreateMembership(member1, team);
+
+        var entries = new List<HabitEntry>
+        {
+            CreateEntry(habit, member1, null, EntryStatus.Logged),
+            CreateEntry(habit, member1, null, EntryStatus.Skipped),
+            CreateEntry(habit, member2, null, EntryStatus.Skipped)
+        };
+
+        context.Members.AddRange(member1, member2);
+        context.HabitTeams.Add(team);
+        context.Habits.Add(habit);
+        context.Memberships.Add(membership);
+        context.HabitEntries.AddRange(entries);
+
+        await context.SaveChangesAsync();
+
+        var controller = CreateController(context, currentUserId);
+
+        var result = await controller.ViewLeaderboard(habitId);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<LeaderboardResponse>(okResult.Value);
+
+        Assert.Single(response.Entries);
+        Assert.Equal("Alice", response.Entries[0].Username);
+        Assert.Equal(1, response.Entries[0].TotalProgress);
     }
 
     [Fact]
