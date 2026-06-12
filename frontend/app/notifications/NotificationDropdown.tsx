@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, X } from "lucide-react";
 import { apiFetch } from "../auxiliary/apiFetch";
@@ -24,42 +24,66 @@ export default function NotificationDropdown({
 }: NotificationDropdownProps = {}) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [expandedNotificationId, setExpandedNotificationId] = useState<string | null>(
+    null
+  );
+
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    let cancelled = false;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-    async function loadNotifications() {
-      try {
-        const data = await apiFetch<Notification[]>("/api/notifications");
+  const loadNotifications = useCallback(async () => {
+    try {
+      const data = await apiFetch<Notification[]>("/api/notifications");
 
-        if (!cancelled) {
-          setNotifications(data);
-        }
-      } catch (err) {
-        console.error(err);
+      if (isMountedRef.current) {
+        setNotifications(data);
+      }
+    } catch (err) {
+      console.error(err);
 
-        if (!cancelled) {
-          setNotifications([]);
-        }
+      if (isMountedRef.current) {
+        setNotifications([]);
       }
     }
+  }, []);
 
-    if (loadOnMount) {
-      loadNotifications();
+  useEffect(() => {
+    if (!loadOnMount) {
+      return;
     }
 
+    void loadNotifications();
+
+    const intervalId = window.setInterval(() => {
+      void loadNotifications();
+    }, 30000);
+
     window.addEventListener("focus", loadNotifications);
+
     return () => {
-      cancelled = true;
+      window.clearInterval(intervalId);
       window.removeEventListener("focus", loadNotifications);
     };
-  }, [loadOnMount]);
+  }, [loadOnMount, loadNotifications]);
+
+  useEffect(() => {
+    if (open) {
+      void loadNotifications();
+    }
+  }, [open, loadNotifications]);
 
   async function markAsRead(notificationId: string) {
-    const notification = notifications.find((n) => n.notificationId === notificationId);
+    const notification = notifications.find(
+      (n) => n.notificationId === notificationId
+    );
 
     if (!notification || notification.read) {
       return;
@@ -77,6 +101,7 @@ export default function NotificationDropdown({
       });
     } catch (err) {
       console.error(err);
+
       setNotifications((prev) =>
         prev.map((n) =>
           n.notificationId === notificationId ? { ...n, read: false } : n
@@ -85,9 +110,21 @@ export default function NotificationDropdown({
     }
   }
 
+  function openNotification(notificationId: string) {
+    setExpandedNotificationId((current) =>
+      current === notificationId ? null : notificationId
+    );
+
+    void markAsRead(notificationId);
+  }
+
   async function deleteNotification(notificationId: string) {
     setNotifications((prev) =>
       prev.filter((n) => n.notificationId !== notificationId)
+    );
+
+    setExpandedNotificationId((current) =>
+      current === notificationId ? null : current
     );
 
     try {
@@ -96,6 +133,7 @@ export default function NotificationDropdown({
       });
     } catch (err) {
       console.error(err);
+
       try {
         const data = await apiFetch<Notification[]>("/api/notifications");
         setNotifications(data);
@@ -121,7 +159,8 @@ export default function NotificationDropdown({
     const previousFocus = document.activeElement as HTMLElement | null;
 
     window.setTimeout(() => {
-      const firstFocusable = panelRef.current?.querySelector<HTMLElement>(focusableSelector);
+      const firstFocusable =
+        panelRef.current?.querySelector<HTMLElement>(focusableSelector);
       firstFocusable?.focus();
     }, 0);
 
@@ -159,8 +198,10 @@ export default function NotificationDropdown({
     }
 
     document.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+
       if (previousFocus && document.contains(previousFocus)) {
         previousFocus.focus();
       }
@@ -215,50 +256,71 @@ export default function NotificationDropdown({
                   No notifications
                 </p>
               ) : (
-                notifications.map((n) => (
-                  <div
-                    key={n.notificationId}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => markAsRead(n.notificationId)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        markAsRead(n.notificationId);
-                      }
-                    }}
-                    aria-label={`${n.read ? "Read" : "Unread"} notification: ${n.content}`}
-                    className={`group flex cursor-pointer items-center justify-between gap-4 border-b border-white/5 px-4 py-3 text-left transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-indigo-400/70 ${
-                      !n.read ? "bg-white/[0.03]" : ""
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[15px] font-medium text-white">
-                        {n.content}
-                      </p>
-                    </div>
+                notifications.map((n) => {
+                  const isExpanded =
+                    expandedNotificationId === n.notificationId;
 
-                    <div className="flex shrink-0 items-center gap-2">
-                      {n.createdAt && (
-                        <span className="text-right text-xs text-white/35">
-                          {formatNotificationTimestamp(n.createdAt)}
-                        </span>
-                      )}
+                  return (
+                    <div
+                      key={n.notificationId}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openNotification(n.notificationId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openNotification(n.notificationId);
+                        }
+                      }}
+                      aria-expanded={isExpanded}
+                      aria-label={`${n.read ? "Read" : "Unread"} notification: ${
+                        n.content
+                      }`}
+                      title={n.content}
+                      className={`group flex cursor-pointer items-start justify-between gap-4 border-b border-white/5 px-4 py-3 text-left transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-indigo-400/70 ${
+                        !n.read ? "bg-white/[0.03]" : ""
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={`text-[15px] font-medium text-white ${
+                            isExpanded
+                              ? "whitespace-normal break-words leading-6"
+                              : "truncate"
+                          }`}
+                        >
+                          {n.content}
+                        </p>
 
-                      <button
-                        type="button"
-                        aria-label={`Delete notification: ${n.content}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteNotification(n.notificationId);
-                        }}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg text-white/45 transition hover:bg-white/10 hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-rose-400/70"
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
+                        {isExpanded && (
+                          <p className="mt-2 text-xs text-white/40">
+                            Click again to collapse
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        {n.createdAt && (
+                          <span className="text-right text-xs text-white/35">
+                            {formatNotificationTimestamp(n.createdAt)}
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          aria-label={`Delete notification: ${n.content}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteNotification(n.notificationId);
+                          }}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-white/45 transition hover:bg-white/10 hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-rose-400/70"
+                        >
+                          <X className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </motion.div>
@@ -270,10 +332,12 @@ export default function NotificationDropdown({
 
 function formatNotificationTimestamp(date: string) {
   const d = new Date(date);
+
   const datePart = d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+
   const timePart = d.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",

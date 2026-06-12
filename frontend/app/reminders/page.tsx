@@ -90,6 +90,11 @@ function formatLastSent(iso: string | null): string {
 function formatReminderTime(iso: string | null): string {
   if (!iso) return "No time set";
 
+  const timeMatch = iso.match(/T(\d{2}):(\d{2})/);
+  if (timeMatch) {
+    return `${timeMatch[1]}:${timeMatch[2]}`;
+  }
+
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
 

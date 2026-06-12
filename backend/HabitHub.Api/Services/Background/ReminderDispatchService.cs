@@ -81,8 +81,9 @@ public class ReminderDispatchService : BackgroundService
 
             var memberTimeZone = GetMemberTimeZone(reminder.Member.Timezone);
             var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, memberTimeZone);
+            var reminderWallClockTime = ToReminderWallClockTime(habit.ReminderTime!.Value);
 
-            if (!IsReminderDueToday(habit.ReminderTime!.Value, nowLocal))
+            if (!IsReminderDueToday(reminderWallClockTime, nowLocal))
                 continue;
 
             if (WasReminderAlreadySentToday(reminder.LastSentAt, nowLocal, memberTimeZone))
@@ -120,15 +121,13 @@ public class ReminderDispatchService : BackgroundService
         await db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Dispatched {SentCount} reminder notification(s). Disabled {DisabledCount} inactive reminder(s).",
+            "Reminder dispatch finished. Sent {SentCount} notification(s). Disabled {DisabledCount} inactive reminder(s).",
             sentCount,
             disabledInactiveCount);
     }
 
-    private static bool IsReminderDueToday(DateTime reminderTime, DateTime nowLocal)
+    private static bool IsReminderDueToday(DateTime reminderWallClockTime, DateTime nowLocal)
     {
-        var reminderWallClockTime = ToReminderWallClockTime(reminderTime);
-
         if (reminderWallClockTime.Date > nowLocal.Date)
             return false;
 
@@ -158,19 +157,34 @@ public class ReminderDispatchService : BackgroundService
         {
             return TimeZoneInfo.FindSystemTimeZoneById(timezone);
         }
-        catch (TimeZoneNotFoundException)
+        catch
         {
-            return TimeZoneInfo.Utc;
-        }
-        catch (InvalidTimeZoneException)
-        {
+            try
+            {
+                if (TimeZoneInfo.TryConvertIanaIdToWindowsId(timezone, out var windowsId))
+                {
+                    return TimeZoneInfo.FindSystemTimeZoneById(windowsId);
+                }
+            }
+            catch
+            {
+                return TimeZoneInfo.Utc;
+            }
+
             return TimeZoneInfo.Utc;
         }
     }
 
     private static DateTime ToReminderWallClockTime(DateTime value)
     {
-        return DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+        return new DateTime(
+            value.Year,
+            value.Month,
+            value.Day,
+            value.Hour,
+            value.Minute,
+            0,
+            DateTimeKind.Utc);
     }
 
     private static DateTime ToUtc(DateTime value)
