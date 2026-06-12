@@ -819,7 +819,6 @@ export default function HomePage() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm text-white/50">Reminders</p>
-                  <h3 className="mt-1 text-lg font-semibold text-white">2 pending reminders</h3>
                   <p className="mt-2 text-sm text-white/50">
                     Stay on track with your daily habit check-ins.
                   </p>
@@ -839,9 +838,9 @@ export default function HomePage() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm text-white/50">Quick Access</p>
-                  <h3 className="mt-1 text-lg font-semibold text-white">Settings & account</h3>
+                  <h3 className="mt-1 text-lg font-semibold text-white">Profile</h3>
                   <p className="mt-2 text-sm text-white/50">
-                    Manage profile, privacy, notifications, and sessions.
+                    View and update your account details.
                   </p>
                 </div>
 
