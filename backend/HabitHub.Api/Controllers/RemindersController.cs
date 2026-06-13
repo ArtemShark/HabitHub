@@ -58,6 +58,13 @@ public class RemindersController : ControllerBase
 
         habit.ReminderTime = ToReminderWallClockTime(request.ReminderTime);
 
+        foreach (var existingReminder in habit.Reminders)
+        {
+            existingReminder.LastSentAt = DateTime.SpecifyKind(
+                DateTime.MinValue,
+                DateTimeKind.Utc);
+        }
+
         var activeMemberIds = habit.Team.Memberships
             .Where(m => m.Status == MembershipStatus.Active)
             .Select(m => m.MemberId)
@@ -77,7 +84,9 @@ public class RemindersController : ControllerBase
                     HabitId = habitId,
                     MemberId = memberId,
                     Enabled = true,
-                    LastSentAt = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)
+                    LastSentAt = DateTime.SpecifyKind(
+                        DateTime.MinValue,
+                        DateTimeKind.Utc)
                 });
             }
         }
@@ -143,7 +152,9 @@ public class RemindersController : ControllerBase
                 HabitId = habitId,
                 MemberId = userId.Value,
                 Enabled = request.Enabled,
-                LastSentAt = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)
+                LastSentAt = DateTime.SpecifyKind(
+                    DateTime.MinValue,
+                    DateTimeKind.Utc)
             };
 
             _context.Reminders.Add(reminder);
@@ -169,6 +180,8 @@ public class RemindersController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
+        var minUtcDate = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+
         var reminders = await _context.Reminders
             .Include(r => r.Habit)
                 .ThenInclude(h => h.Team)
@@ -187,7 +200,7 @@ public class RemindersController : ControllerBase
                 HabitId = r.HabitId,
                 HabitName = r.Habit.Name,
                 Enabled = r.Enabled,
-                LastSentAt = r.LastSentAt == DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)
+                LastSentAt = r.LastSentAt == minUtcDate
                     ? null
                     : r.LastSentAt,
                 ReminderTime = r.Habit.ReminderTime
@@ -199,6 +212,13 @@ public class RemindersController : ControllerBase
 
     private static DateTime ToReminderWallClockTime(DateTime value)
     {
-        return DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+        return new DateTime(
+            value.Year,
+            value.Month,
+            value.Day,
+            value.Hour,
+            value.Minute,
+            0,
+            DateTimeKind.Utc);
     }
 }
